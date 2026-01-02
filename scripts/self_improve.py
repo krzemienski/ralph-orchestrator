@@ -139,8 +139,6 @@ class SelfImprovementRunner:
         context_threshold: float = DEFAULT_CONTEXT_THRESHOLD,
         output_preview_length: int = DEFAULT_OUTPUT_PREVIEW,
         iteration_telemetry: bool = True,
-        enable_validation: bool = False,
-        validation_interactive: bool = True,
     ) -> RalphOrchestrator:
         """Create a properly configured RalphOrchestrator instance."""
         prompt_path = Path(prompt_file)
@@ -164,8 +162,6 @@ class SelfImprovementRunner:
             prompt_file_or_config=config,
             iteration_telemetry=iteration_telemetry,
             output_preview_length=output_preview_length,
-            enable_validation=enable_validation,
-            validation_interactive=validation_interactive,
         )
 
         # Configure Claude adapter with all tools
@@ -235,8 +231,6 @@ class SelfImprovementRunner:
         context_threshold: float = DEFAULT_CONTEXT_THRESHOLD,
         output_preview_length: int = DEFAULT_OUTPUT_PREVIEW,
         iteration_telemetry: bool = True,
-        enable_validation: bool = False,
-        validation_interactive: bool = True,
         # Web UI params
         with_web_ui: bool = False,
         web_port: int = 8000,
@@ -271,8 +265,6 @@ class SelfImprovementRunner:
                 context_threshold=context_threshold,
                 output_preview_length=output_preview_length,
                 iteration_telemetry=iteration_telemetry,
-                enable_validation=enable_validation,
-                validation_interactive=validation_interactive,
             )
 
             if self.web_monitor and self.orchestrator:
@@ -408,18 +400,6 @@ Note:
         help="Disable per-iteration telemetry"
     )
 
-    # Validation settings
-    parser.add_argument(
-        "--enable-validation",
-        action="store_true",
-        help="Enable functional validation (opt-in, Claude-only)"
-    )
-    parser.add_argument(
-        "--no-validation-interactive",
-        action="store_true",
-        help="Skip user confirmation for validation strategy"
-    )
-
     # Web UI options
     parser.add_argument(
         "--with-web-ui", "-w",
@@ -443,6 +423,11 @@ Note:
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose output"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show configuration without running (validates setup)"
     )
 
     args = parser.parse_args()
@@ -469,13 +454,48 @@ Note:
         "context_threshold": args.context_threshold,
         "output_preview_length": args.output_preview_length,
         "iteration_telemetry": not args.no_telemetry,
-        "enable_validation": args.enable_validation,
-        "validation_interactive": not args.no_validation_interactive,
         # Web UI
         "with_web_ui": args.with_web_ui,
         "web_port": args.web_port,
         "open_browser": not args.no_browser,
     }
+
+    # Handle dry-run mode
+    if args.dry_run:
+        prompt_file = args.prompt if args.prompt else FEATURES[args.feature].prompt_file
+        prompt_path = Path(prompt_file)
+
+        runner.console.print_header("RALPH Self-Improvement (DRY RUN)")
+        print(f"\n  Prompt: {prompt_file}")
+        print(f"  Prompt exists: {prompt_path.exists()}")
+        print()
+        print("  Configuration:")
+        print(f"    Max iterations: {run_kwargs['max_iterations']}")
+        print(f"    Max runtime: {run_kwargs['max_runtime']}s ({run_kwargs['max_runtime'] // 3600}h)")
+        print(f"    Max cost: ${run_kwargs['max_cost']:.2f}")
+        print(f"    Context window: {run_kwargs['context_window']:,} tokens")
+        print(f"    Context threshold: {run_kwargs['context_threshold']:.0%}")
+        print(f"    Checkpoint interval: {run_kwargs['checkpoint_interval']}")
+        print(f"    Web UI: {'enabled' if run_kwargs['with_web_ui'] else 'disabled'}")
+        if run_kwargs['with_web_ui']:
+            print(f"    Web port: {run_kwargs['web_port']}")
+        print()
+
+        if prompt_path.exists():
+            runner.console.print_success("Dry run complete - configuration valid")
+            # Start web UI if requested to verify it works
+            if run_kwargs['with_web_ui']:
+                runner.start_web_ui(port=run_kwargs['web_port'], open_browser=run_kwargs['open_browser'])
+                print("\n  Web UI started - press Ctrl+C to stop")
+                try:
+                    while True:
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    print("\n  Stopped")
+        else:
+            runner.console.print_error(f"Prompt file not found: {prompt_file}")
+            sys.exit(1)
+        return
 
     if args.prompt:
         runner.run_prompt(prompt_file=args.prompt, **run_kwargs)
