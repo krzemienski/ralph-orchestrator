@@ -447,12 +447,12 @@ validation_interactive: true  # Set false for CI/CD
 
 ### Validation Targets (THE REAL TEST)
 - [ ] **iOS App**: Built SwiftUI app, ran in Simulator, captured screenshots
-- [ ] **Web App**: Built web UI, ran in browser via Playwright/Puppeteer, captured screenshots
+- [x] **Web App**: Built web UI, ran in browser via Playwright/Puppeteer, captured screenshots
 - [x] **CLI Tool**: Built CLI, executed commands, captured output
 
 ### Evidence Files
 - [ ] `validation-evidence/ios/` - Screenshots from iOS Simulator
-- [ ] `validation-evidence/web/` - Screenshots from browser automation
+- [x] `validation-evidence/web/` - Screenshots from browser automation
 - [x] `validation-evidence/cli/` - Terminal output captures
 
 ### Documentation
@@ -498,11 +498,11 @@ Build and validate the three example applications:
 - [ ] Capture screenshots as proof
 - [ ] Save to `validation-evidence/ios/`
 
-#### Phase 5b: Web Application
-- [ ] Create web project in sandbox
-- [ ] Use Playwright/Puppeteer to load and screenshot
-- [ ] Capture browser screenshots as proof
-- [ ] Save to `validation-evidence/web/`
+#### Phase 5b: Web Application ✅ COMPLETED
+- [x] Create web project in sandbox
+- [x] Use Playwright/Puppeteer to load and screenshot
+- [x] Capture browser screenshots as proof
+- [x] Save to `validation-evidence/web/`
 
 #### Phase 5c: CLI Tool ✅ COMPLETED
 - [x] Create CLI tool in sandbox
@@ -784,3 +784,39 @@ Would you like me to proceed with this? [Approve/Modify/Skip]: _
 **No mocks used** - All tests executed real CLI commands in sandbox
 
 **Next**: Phase 5b - Web application validation with Playwright
+
+### Iteration 6 (Phase 5b Complete - Web Validation)
+**Completed**: Web application validation with real Playwright execution
+- Created sandbox directory: `/tmp/ralph-validation-web-{timestamp}/`
+- Built HTML/CSS/JS web app with:
+  - Purple gradient background (#667eea to #764ba2)
+  - "Ralph Validation Test" marker element
+  - Interactive counter with increment/decrement/reset
+  - Feature cards with icons
+  - Navigation header
+  - Responsive design
+- Started Python HTTP server on port 8765
+- Executed 8 Playwright tests:
+  - Page load and title verification
+  - Validation marker content check
+  - Main heading verification
+  - Feature cards count (3 found)
+  - Button click interactions
+  - Counter functionality (increment, decrement, reset)
+  - Responsive layout (mobile viewport)
+  - Navigation links verification
+- Captured 5 screenshots as evidence:
+  - `01-initial-load.png` - Full page on load
+  - `02-after-button-click.png` - After button interaction
+  - `03-counter-interaction.png` - Counter at value 2
+  - `04-mobile-viewport.png` - Mobile responsive view
+  - `05-final-state.png` - Final desktop state
+- Evidence saved to `validation-evidence/web/`:
+  - Screenshots (5 PNG files)
+  - `index.html` - Web app source code
+  - `playwright-test-ralph-validation.js` - Test script
+  - `validation-log.txt` - Detailed test log
+
+**No mocks used** - Real browser automation with visible Chromium window
+
+**Next**: Phase 5a - iOS application validation with xc-mcp
