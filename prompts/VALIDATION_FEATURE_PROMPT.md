@@ -448,12 +448,12 @@ validation_interactive: true  # Set false for CI/CD
 ### Validation Targets (THE REAL TEST)
 - [ ] **iOS App**: Built SwiftUI app, ran in Simulator, captured screenshots
 - [ ] **Web App**: Built web UI, ran in browser via Playwright/Puppeteer, captured screenshots
-- [ ] **CLI Tool**: Built CLI, executed commands, captured output
+- [x] **CLI Tool**: Built CLI, executed commands, captured output
 
 ### Evidence Files
 - [ ] `validation-evidence/ios/` - Screenshots from iOS Simulator
 - [ ] `validation-evidence/web/` - Screenshots from browser automation
-- [ ] `validation-evidence/cli/` - Terminal output captures
+- [x] `validation-evidence/cli/` - Terminal output captures
 
 ### Documentation
 - [ ] Update CLI help text with new flags
@@ -504,11 +504,11 @@ Build and validate the three example applications:
 - [ ] Capture browser screenshots as proof
 - [ ] Save to `validation-evidence/web/`
 
-#### Phase 5c: CLI Tool
-- [ ] Create CLI tool in sandbox
-- [ ] Execute and capture output
-- [ ] Verify exit codes and output format
-- [ ] Save to `validation-evidence/cli/`
+#### Phase 5c: CLI Tool ✅ COMPLETED
+- [x] Create CLI tool in sandbox
+- [x] Execute and capture output
+- [x] Verify exit codes and output format
+- [x] Save to `validation-evidence/cli/`
 
 ### Phase 6: CLI and Config (Priority: MEDIUM)
 - [ ] Add `--enable-validation` CLI flag
@@ -764,3 +764,23 @@ Would you like me to proceed with this? [Approve/Modify/Skip]: _
 - All 44 tests pass (22 existing + 22 validation)
 
 **Next**: Phase 5 - Build and validate three application types (iOS, Web, CLI)
+
+### Iteration 5 (Phase 5c Complete - CLI Validation)
+**Completed**: CLI tool validation with real execution
+- Created sandbox directory: `/tmp/ralph-validation-{timestamp}/`
+- Built Python CLI tool with argparse (help, info, analyze, transform commands)
+- Executed 8 real tests capturing stdout and exit codes
+- Verified:
+  - Help command works (exit 0)
+  - Info command displays tool information (exit 0)
+  - Version flag shows version (exit 0)
+  - Analyze command processes files (exit 0)
+  - Transform command outputs JSON/YAML/text formats (exit 0)
+  - Error handling returns non-zero exit code (exit 1)
+- Evidence saved to `validation-evidence/cli/`:
+  - `cli-output.txt` - Full terminal output captures
+  - `ralph_validator_cli.py` - Source code for reference
+
+**No mocks used** - All tests executed real CLI commands in sandbox
+
+**Next**: Phase 5b - Web application validation with Playwright
