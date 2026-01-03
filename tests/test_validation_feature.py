@@ -268,5 +268,157 @@ class TestValidationClaudeOnlyGuard(unittest.TestCase):
             Path(prompt_file).unlink()
 
 
+class TestValidationProposalMethods(unittest.TestCase):
+    """Test validation proposal method implementations."""
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_load_proposal_prompt_method_exists(
+        self, mock_acp, mock_gemini, mock_qchat, mock_claude
+    ):
+        """Test _load_proposal_prompt method exists on orchestrator."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Task")
+            prompt_file = f.name
+
+        try:
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=prompt_file,
+                primary_tool="claude",
+                enable_validation=True,
+            )
+
+            # Method should exist
+            self.assertTrue(hasattr(orchestrator, '_load_proposal_prompt'))
+            self.assertTrue(callable(getattr(orchestrator, '_load_proposal_prompt')))
+        finally:
+            Path(prompt_file).unlink()
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_propose_validation_strategy_method_exists(
+        self, mock_acp, mock_gemini, mock_qchat, mock_claude
+    ):
+        """Test _propose_validation_strategy method exists on orchestrator."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Task")
+            prompt_file = f.name
+
+        try:
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=prompt_file,
+                primary_tool="claude",
+                enable_validation=True,
+            )
+
+            # Method should exist and be async
+            self.assertTrue(hasattr(orchestrator, '_propose_validation_strategy'))
+            self.assertTrue(callable(getattr(orchestrator, '_propose_validation_strategy')))
+        finally:
+            Path(prompt_file).unlink()
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_get_user_confirmation_method_exists(
+        self, mock_acp, mock_gemini, mock_qchat, mock_claude
+    ):
+        """Test _get_user_confirmation method exists on orchestrator."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Task")
+            prompt_file = f.name
+
+        try:
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=prompt_file,
+                primary_tool="claude",
+                enable_validation=True,
+            )
+
+            # Method should exist and be async
+            self.assertTrue(hasattr(orchestrator, '_get_user_confirmation'))
+            self.assertTrue(callable(getattr(orchestrator, '_get_user_confirmation')))
+        finally:
+            Path(prompt_file).unlink()
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_load_proposal_prompt_returns_string(
+        self, mock_acp, mock_gemini, mock_qchat, mock_claude
+    ):
+        """Test _load_proposal_prompt returns a string prompt."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Task")
+            prompt_file = f.name
+
+        try:
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=prompt_file,
+                primary_tool="claude",
+                enable_validation=True,
+            )
+
+            # Should return a non-empty string
+            result = orchestrator._load_proposal_prompt()
+            self.assertIsInstance(result, str)
+            self.assertGreater(len(result), 0)
+        finally:
+            Path(prompt_file).unlink()
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_load_proposal_prompt_contains_key_sections(
+        self, mock_acp, mock_gemini, mock_qchat, mock_claude
+    ):
+        """Test _load_proposal_prompt returns prompt with required content."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Task")
+            prompt_file = f.name
+
+        try:
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=prompt_file,
+                primary_tool="claude",
+                enable_validation=True,
+            )
+
+            result = orchestrator._load_proposal_prompt()
+
+            # Should contain key collaborative language per spec
+            self.assertIn("propose", result.lower())
+            self.assertIn("user", result.lower())
+        finally:
+            Path(prompt_file).unlink()
+
+
 if __name__ == "__main__":
     unittest.main()
