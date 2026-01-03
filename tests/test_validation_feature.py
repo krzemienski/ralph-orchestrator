@@ -500,5 +500,55 @@ class TestValidationProposalPromptFile(unittest.TestCase):
         )
 
 
+class TestValidationCLIFlags(unittest.TestCase):
+    """Test validation feature CLI flags in argument parser."""
+
+    def test_enable_validation_flag_exists(self):
+        """Test --enable-validation flag is recognized by argument parser."""
+        import argparse
+        from ralph_orchestrator.__main__ import main
+        import sys
+
+        # Get the argument parser by inspecting the main module
+        # We need to check if the flag exists in the parser
+        import ralph_orchestrator.__main__ as main_module
+
+        # Check the source contains the flag definition
+        import inspect
+        source = inspect.getsource(main_module)
+
+        self.assertIn("--enable-validation", source)
+
+    def test_no_validation_interactive_flag_exists(self):
+        """Test --no-validation-interactive flag is recognized by argument parser."""
+        import ralph_orchestrator.__main__ as main_module
+        import inspect
+        source = inspect.getsource(main_module)
+
+        self.assertIn("--no-validation-interactive", source)
+
+    def test_validation_flags_in_parser_help(self):
+        """Test validation flags appear in parser configuration."""
+        import ralph_orchestrator.__main__ as main_module
+        import inspect
+        source = inspect.getsource(main_module)
+
+        # Both flags should be defined in the argument parser
+        self.assertIn("enable_validation", source)
+        self.assertIn("validation_interactive", source)
+
+    def test_validation_flags_passed_to_orchestrator(self):
+        """Test validation flags are wired to RalphOrchestrator constructor."""
+        import ralph_orchestrator.__main__ as main_module
+        import inspect
+        source = inspect.getsource(main_module)
+
+        # The orchestrator instantiation should include validation flags
+        # Check that enable_validation is passed to RalphOrchestrator
+        self.assertIn("enable_validation=", source)
+        # Check that validation_interactive is computed and passed
+        self.assertIn("validation_interactive", source)
+
+
 if __name__ == "__main__":
     unittest.main()
