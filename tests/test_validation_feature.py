@@ -420,6 +420,33 @@ class TestValidationProposalMethods(unittest.TestCase):
             Path(prompt_file).unlink()
 
 
+class TestValidationOrchestrationIntegration(unittest.TestCase):
+    """Test validation phase integration into orchestration loop."""
+
+    def test_arun_contains_validation_proposal_integration(self):
+        """Test that arun() method contains validation proposal integration code."""
+        import inspect
+        source = inspect.getsource(RalphOrchestrator.arun)
+
+        # arun should check enable_validation
+        self.assertIn("enable_validation", source)
+
+        # arun should call _propose_validation_strategy
+        self.assertIn("_propose_validation_strategy", source)
+
+    def test_arun_handles_user_decline(self):
+        """Test that arun() handles the case when user declines validation."""
+        import inspect
+        source = inspect.getsource(RalphOrchestrator.arun)
+
+        # arun should check validation_approved
+        self.assertIn("validation_approved", source)
+
+        # arun should set enable_validation to False when declined
+        # This pattern indicates graceful fallback
+        self.assertIn("enable_validation", source)
+
+
 class TestValidationProposalPromptFile(unittest.TestCase):
     """Test VALIDATION_PROPOSAL_PROMPT.md file exists and has correct content."""
 

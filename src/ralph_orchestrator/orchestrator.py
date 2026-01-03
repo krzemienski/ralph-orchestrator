@@ -325,6 +325,17 @@ class RalphOrchestrator:
         # Set up async signal handlers now that we have a running loop
         self._setup_async_signal_handlers()
 
+        # Validation proposal phase (if enabled)
+        if self.enable_validation:
+            logger.info("Validation enabled - starting proposal phase")
+            await self._propose_validation_strategy()
+
+            if not self.validation_approved:
+                logger.info("Validation declined by user, proceeding without validation")
+                self.enable_validation = False
+            else:
+                logger.info("Validation approved by user")
+
         start_time = time.time()
         self._start_time = start_time  # Store for state retrieval
 
