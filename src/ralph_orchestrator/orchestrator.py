@@ -47,7 +47,9 @@ class RalphOrchestrator:
         acp_agent: str = None,
         acp_permission_mode: str = None,
         iteration_telemetry: bool = True,
-        output_preview_length: int = 500
+        output_preview_length: int = 500,
+        enable_validation: bool = False,
+        validation_interactive: bool = True,
     ):
         """Initialize the orchestrator.
 
@@ -65,6 +67,11 @@ class RalphOrchestrator:
             acp_permission_mode: ACP permission handling mode
             iteration_telemetry: Enable per-iteration telemetry capture
             output_preview_length: Max chars for output preview in telemetry
+            enable_validation: Enable validation feature (opt-in, Claude-only)
+            validation_interactive: Require user confirmation for validation (default True)
+
+        Raises:
+            ValueError: If enable_validation=True with non-Claude adapter
         """
         # Store ACP-specific settings
         self.acp_agent = acp_agent
@@ -85,6 +92,8 @@ class RalphOrchestrator:
             self.verbose = config.verbose if hasattr(config, 'verbose') else False
             self.iteration_telemetry = getattr(config, 'iteration_telemetry', True)
             self.output_preview_length = getattr(config, 'output_preview_length', 500)
+            self.enable_validation = getattr(config, 'enable_validation', False)
+            self.validation_interactive = getattr(config, 'validation_interactive', True)
         else:
             # Individual parameters
             self.prompt_file = Path(prompt_file_or_config if prompt_file_or_config else "PROMPT.md")
@@ -99,6 +108,8 @@ class RalphOrchestrator:
             self.verbose = verbose
             self.iteration_telemetry = iteration_telemetry
             self.output_preview_length = output_preview_length
+            self.enable_validation = enable_validation
+            self.validation_interactive = validation_interactive
 
         # Initialize components
         self.metrics = Metrics()
@@ -117,7 +128,18 @@ class RalphOrchestrator:
         if not self.current_adapter:
             logger.error(f"DEBUG: primary_tool={self.primary_tool}, adapters={list(self.adapters.keys())}")
             raise ValueError(f"Unknown tool: {self.primary_tool}")
-        
+
+        # Validation feature guard: Claude-only
+        if self.enable_validation and self.primary_tool != "claude":
+            raise ValueError(
+                f"Validation feature is only available with Claude adapter. "
+                f"Current adapter: {self.primary_tool}"
+            )
+
+        # Validation state attributes
+        self.validation_proposal = None   # Stores AI's proposed strategy
+        self.validation_approved = False  # User confirmation status
+
         # Signal handling - use basic signal registration here
         # The async handlers will be set up when arun() is called
         self.stop_requested = False

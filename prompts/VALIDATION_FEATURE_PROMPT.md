@@ -2,6 +2,53 @@
 
 Build an opt-in validation feature that enables Ralph Orchestrator to propose functional validation strategies to users. The system analyzes projects and PROPOSES validation approaches - it does NOT auto-generate configurations. Users must confirm before validation proceeds.
 
+---
+
+## CRITICAL: No Mock Testing - Real Execution Only
+
+<no_mocks_policy>
+**ABSOLUTE REQUIREMENT**: This implementation must use REAL execution for all testing and validation.
+
+### What This Means
+
+1. **NO MOCK TESTS** - Do not create unit tests that mock behavior
+2. **NO SIMULATED VALIDATION** - Every validation must actually run the code
+3. **SANDBOX EXECUTION** - Run the orchestrator in:
+   - A separate directory structure (e.g., `/tmp/ralph-validation-sandbox/`)
+   - Or a containerized Docker environment using MCP_DOCKER
+   - This isolates validation from affecting the main codebase
+4. **REAL OUTPUT VERIFICATION** - Success is determined by:
+   - Actual screenshots from iOS Simulator
+   - Actual browser screenshots from Playwright/Puppeteer
+   - Actual CLI output captured from executed commands
+5. **EXISTING TESTS ONLY** - Only run unit tests if the codebase already has them and that's the established testing pattern (check git history)
+
+### Why No Mocks?
+
+Mock tests can pass while the real implementation fails. For a validation system, we need PROOF that:
+- The iOS app actually renders in the Simulator
+- The web UI actually loads in a browser
+- The CLI tool actually produces correct output
+
+### Sandbox Strategy
+
+```bash
+# Create isolated sandbox for validation
+SANDBOX_DIR="/tmp/ralph-validation-$(date +%s)"
+mkdir -p "$SANDBOX_DIR"
+cd "$SANDBOX_DIR"
+
+# Clone/copy the project to sandbox
+# Run validation in isolation
+# Capture real outputs (screenshots, logs, exit codes)
+# Clean up after validation
+```
+
+Alternatively, use Docker via MCP_DOCKER for complete isolation.
+</no_mocks_policy>
+
+---
+
 ## The Problem
 
 Current Ralph Orchestrator lacks end-user validation beyond build/test:
@@ -21,6 +68,110 @@ Create a validation system that:
 4. **Is flexible** - No hardcoded tools; AI recommends based on project context
 5. **Is transparent** - User sees and approves validation strategy before work begins
 6. **Inherits user's tools** - Leverages user's Claude Code MCP servers and settings
+7. **Uses real execution** - No mocks, actual screenshots/output as proof
+
+---
+
+## Success Criteria: Three Validation Targets
+
+<validation_targets>
+To prove this system works, you must successfully build and validate THREE different types of applications. Each must produce REAL evidence of working.
+
+### Target 1: iOS Application (SwiftUI)
+
+**What to Build:**
+- A simple SwiftUI app with:
+  - A colored background (specific hex color you choose)
+  - Navigation between 2-3 screens
+  - At least one button interaction
+  - Text displaying "Ralph Validation Test"
+
+**Validation Method:**
+- Use `xc-mcp` MCP server to:
+  - Build the Xcode project
+  - Boot iOS Simulator (iPhone 15 Pro or similar)
+  - Install and launch the app
+  - Take screenshots of each screen
+- **Success Evidence**: Screenshots saved showing the app running with correct colors/navigation
+
+**MCP Tools Available:**
+- `xc-mcp` - Xcode and iOS Simulator control
+- File system access for project creation
+
+### Target 2: Web Application (Browser-based)
+
+**What to Build:**
+- A simple web page/app with:
+  - Specific styling (colors, fonts you define)
+  - Interactive elements (buttons, forms)
+  - Multiple routes/pages if applicable
+  - Text displaying "Ralph Validation Test"
+
+**Validation Method:**
+- Use `playwright` or `puppeteer` MCP server to:
+  - Start a local dev server
+  - Navigate to the page
+  - Interact with elements
+  - Take screenshots
+  - Verify elements exist and are styled correctly
+- **Success Evidence**: Browser screenshots showing the web UI rendered correctly
+
+**MCP Tools Available:**
+- `playwright` - Browser automation
+- `puppeteer` - Browser automation (alternative)
+- `chrome-devtools` - DevTools access
+
+### Target 3: CLI Tool
+
+**What to Build:**
+- A command-line tool that:
+  - Accepts arguments/flags
+  - Produces formatted output
+  - Has a help command
+  - Performs a useful operation (file processing, data transformation, etc.)
+
+**Validation Method:**
+- Execute the CLI tool in the sandbox
+- Capture stdout/stderr
+- Verify exit codes
+- Check output matches expected format
+- **Success Evidence**: Captured terminal output showing correct behavior
+
+**MCP Tools Available:**
+- Standard shell execution
+- File system for output verification
+</validation_targets>
+
+---
+
+## Implementation Reference: Check Git History
+
+<git_history_reference>
+Before implementing, examine how existing features were built:
+
+```bash
+# See how the web UI was developed
+git log --oneline --all -- src/ralph_orchestrator/web/
+
+# Key commits to study:
+# - 1fb9c61: Initial web monitoring server infrastructure
+# - 2aea015: Comprehensive web UI dashboard
+# - a08a2b5: JWT-based authentication
+# - 8fb61e4: SQLite database for history
+# - f417efe: Real-time chart visualization
+```
+
+**Learn from these patterns:**
+1. How features were incrementally added
+2. How tests were structured (if any)
+3. How the codebase evolved organically
+4. What conventions are followed
+
+**Apply the same approach:**
+- Build incrementally
+- Test with real execution
+- Follow existing code style
+</git_history_reference>
 
 ---
 
@@ -29,11 +180,13 @@ Create a validation system that:
 The validation system should **leverage the user's existing Claude Code ecosystem**. When running validation with `inherit_user_settings=True`, Ralph inherits:
 
 ### Inherit User's MCP Servers
-The user's `~/.claude/settings.json` MCP servers become available. If they have:
-- **mcp-puppeteer** / **mcp-playwright** → Use for browser automation
-- **xc-mcp** / **ios-simulator** → Use for iOS simulator validation
-- **mcp-filesystem** → Access project files for validation scripts
-- **Custom MCPs** → Propose using whatever tools the user has available
+The user's `~/.claude.json` MCP servers become available. Available servers:
+- **playwright** / **puppeteer** → Browser automation for web validation
+- **xc-mcp** → Xcode and iOS Simulator for iOS validation
+- **MCP_DOCKER** → Containerized sandbox environment
+- **chrome-devtools** → Browser DevTools access
+- **git** → Version control operations
+- **repomix** → Codebase analysis
 
 The ClaudeAdapter supports `inherit_user_settings=True` which loads `setting_sources: ['user', 'project', 'local']`. The validation proposal phase runs Claude with these settings active.
 
@@ -43,16 +196,6 @@ During the proposal phase, Claude should:
 2. Propose validation strategies that USE those available tools
 3. If no automation tools exist, suggest manual validation or fallback options
 4. NEVER assume specific MCPs - discover and adapt
-
-```python
-# Example: Validation proposal with inherited settings
-adapter = ClaudeAdapter(inherit_user_settings=True)
-response = await adapter.aexecute(
-    proposal_prompt,
-    inherit_user_settings=True,  # Load user's ~/.claude/settings.json
-    enable_all_tools=True,       # Access to user's MCP servers
-)
-```
 
 ---
 
@@ -77,8 +220,10 @@ When validation is enabled, before any implementation work:
 │  2. Auto-generate validation_config.json                    │
 │  3. Hardcode: "if web → use Puppeteer"                     │
 │  4. Run validation without asking                           │
+│  5. Use mock tests to "validate"                            │
 │                                                             │
 │  Problems: Prescriptive, inflexible, ignores user context   │
+│            Mocks don't prove real functionality             │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
@@ -89,8 +234,11 @@ When validation is enabled, before any implementation work:
 │  3. Present to user: "Here's what I recommend..."           │
 │  4. Ask: "Does this make sense? Approve/Modify/Skip?"       │
 │  5. Only proceed after explicit user confirmation           │
+│  6. Execute REAL validation in sandbox                      │
+│  7. Capture REAL evidence (screenshots, output)             │
 │                                                             │
 │  Benefits: Collaborative, flexible, user maintains control  │
+│            Real proof of functionality                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -201,6 +349,7 @@ Present your proposal to the user for approval before proceeding.
 2. **User decides** - The user confirms or modifies the approach
 3. **Be flexible** - Don't assume specific tools/MCPs are available
 4. **Ask questions** - Clarify what the user wants to validate
+5. **Real execution only** - No mocks, actual validation in sandbox
 
 ## Your Task
 
@@ -211,14 +360,23 @@ Examine the project structure to understand:
 - How does a user interact with it? (browser, simulator, command line)
 - Are there existing tests? (test frameworks, test commands)
 
-### Step 2: Draft a Validation Proposal
+### Step 2: Discover Available Tools
+Check what MCP servers are available:
+- Browser automation (playwright, puppeteer)
+- iOS development (xc-mcp)
+- Container isolation (MCP_DOCKER)
+- Other relevant tools
+
+### Step 3: Draft a Validation Proposal
 Based on analysis, draft a proposal including:
 - What you found about the project
 - How you recommend validating it from an end-user perspective
 - What tools or methods you would use
+- How you'll capture REAL evidence (screenshots, output)
+- Where the sandbox will be located
 - What you need to know from the user
 
-### Step 3: Present to User for Confirmation
+### Step 4: Present to User for Confirmation
 Present your proposal conversationally and ask for confirmation.
 
 ## Output Requirements
@@ -228,9 +386,11 @@ Your output must be a **conversation with the user**, NOT a configuration file.
 - DO offer alternatives if the user disagrees
 - DO explain WHY you recommend a certain approach
 - DO list what questions you have for the user
+- DO explain sandbox/isolation strategy
 - DO NOT generate validation_config.json until user confirms
 - DO NOT assume specific MCP servers are available
 - DO NOT proceed with validation without user approval
+- DO NOT use mock tests - real execution only
 ```
 
 ---
@@ -263,12 +423,12 @@ validation_interactive: true  # Set false for CI/CD
 ## Success Criteria
 
 ### Core Functionality
-- [ ] `enable_validation` parameter added to RalphOrchestrator.__init__()
-- [ ] Default value is `False` (opt-in behavior)
-- [ ] `validation_interactive` parameter added with default `True`
-- [ ] ValueError raised when `enable_validation=True` with non-Claude adapter
-- [ ] `validation_proposal` attribute exists (None until populated)
-- [ ] `validation_approved` attribute exists (False until user confirms)
+- [x] `enable_validation` parameter added to RalphOrchestrator.__init__()
+- [x] Default value is `False` (opt-in behavior)
+- [x] `validation_interactive` parameter added with default `True`
+- [x] ValueError raised when `enable_validation=True` with non-Claude adapter
+- [x] `validation_proposal` attribute exists (None until populated)
+- [x] `validation_approved` attribute exists (False until user confirms)
 
 ### Proposal Flow
 - [ ] `_propose_validation_strategy()` method implemented
@@ -283,16 +443,17 @@ validation_interactive: true  # Set false for CI/CD
 - [ ] Prompt uses "propose" language (contains "propose")
 - [ ] Prompt mentions user approval (contains "user approval")
 - [ ] Prompt has "do not" instructions (collaborative, not prescriptive)
+- [ ] Prompt emphasizes NO MOCKS, real execution only
 
-### Testing
-- [ ] Test: validation disabled by default
-- [ ] Test: validation can be enabled
-- [ ] Test: validation with Claude succeeds
-- [ ] Test: validation with Gemini raises ValueError
-- [ ] Test: validation with QChat raises ValueError
-- [ ] Test: validation_interactive defaults to True
-- [ ] Test: proposal prompt loads correctly
-- [ ] Test: proposal flow integrates with arun()
+### Validation Targets (THE REAL TEST)
+- [ ] **iOS App**: Built SwiftUI app, ran in Simulator, captured screenshots
+- [ ] **Web App**: Built web UI, ran in browser via Playwright/Puppeteer, captured screenshots
+- [ ] **CLI Tool**: Built CLI, executed commands, captured output
+
+### Evidence Files
+- [ ] `validation-evidence/ios/` - Screenshots from iOS Simulator
+- [ ] `validation-evidence/web/` - Screenshots from browser automation
+- [ ] `validation-evidence/cli/` - Terminal output captures
 
 ### Documentation
 - [ ] Update CLI help text with new flags
@@ -303,38 +464,59 @@ validation_interactive: true  # Set false for CI/CD
 
 ## Implementation Phases
 
-### Phase 1: Orchestrator Parameters (Priority: HIGH)
-- [ ] Add `enable_validation` parameter to `__init__`
-- [ ] Add `validation_interactive` parameter to `__init__`
-- [ ] Implement Claude-only guard (raise ValueError for others)
-- [ ] Add `validation_proposal` and `validation_approved` attributes
-- [ ] Write tests for parameter behavior
+### Phase 1: Orchestrator Parameters (Priority: HIGH) ✅ COMPLETED
+- [x] Add `enable_validation` parameter to `__init__`
+- [x] Add `validation_interactive` parameter to `__init__`
+- [x] Implement Claude-only guard (raise ValueError for others)
+- [x] Add `validation_proposal` and `validation_approved` attributes
+- [x] VERIFY: Parameters work by running orchestrator (tests pass)
 
 ### Phase 2: Proposal Methods (Priority: HIGH)
 - [ ] Implement `_load_proposal_prompt()` method
 - [ ] Implement `_propose_validation_strategy()` method
 - [ ] Implement `_get_user_confirmation()` method
-- [ ] Write tests for method existence and behavior
+- [ ] VERIFY: Methods work by actually calling them
 
 ### Phase 3: Proposal Prompt (Priority: HIGH)
 - [ ] Create `prompts/VALIDATION_PROPOSAL_PROMPT.md`
 - [ ] Follow collaborative, user-centric language
 - [ ] Include examples for different project types
-- [ ] Write tests to validate prompt content
+- [ ] VERIFY: Prompt loads and renders correctly
 
 ### Phase 4: Orchestration Integration (Priority: HIGH)
 - [ ] Integrate proposal phase into `arun()` method
 - [ ] Handle user confirmation/declination flow
 - [ ] Ensure graceful fallback when declined
-- [ ] Write integration tests
+- [ ] VERIFY: Full flow works end-to-end
 
-### Phase 5: CLI and Config (Priority: MEDIUM)
+### Phase 5: Validation Targets (Priority: CRITICAL)
+Build and validate the three example applications:
+
+#### Phase 5a: iOS Application
+- [ ] Create SwiftUI project in sandbox
+- [ ] Use xc-mcp to build and run in Simulator
+- [ ] Capture screenshots as proof
+- [ ] Save to `validation-evidence/ios/`
+
+#### Phase 5b: Web Application
+- [ ] Create web project in sandbox
+- [ ] Use Playwright/Puppeteer to load and screenshot
+- [ ] Capture browser screenshots as proof
+- [ ] Save to `validation-evidence/web/`
+
+#### Phase 5c: CLI Tool
+- [ ] Create CLI tool in sandbox
+- [ ] Execute and capture output
+- [ ] Verify exit codes and output format
+- [ ] Save to `validation-evidence/cli/`
+
+### Phase 6: CLI and Config (Priority: MEDIUM)
 - [ ] Add `--enable-validation` CLI flag
 - [ ] Add `--no-validation-interactive` CLI flag
 - [ ] Support config file options
 - [ ] Update argument parser
 
-### Phase 6: Documentation (Priority: MEDIUM)
+### Phase 7: Documentation (Priority: MEDIUM)
 - [ ] Document feature in docs/guide/
 - [ ] Add usage examples
 - [ ] Update README if needed
@@ -366,17 +548,19 @@ Since this is a web app, I recommend validating it the way a user would -
 by actually loading it in a browser and interacting with it.
 
 My approach:
-1. Build the project to catch compilation errors
-2. Start the dev server
-3. Use browser automation to:
+1. Create sandbox directory: /tmp/ralph-validation-{timestamp}/
+2. Build the project to catch compilation errors
+3. Start the dev server
+4. Use Playwright (detected in your MCP servers) to:
    - Navigate to the main page
    - Verify it renders correctly
+   - Take screenshots as proof
    - Test key user interactions
+5. Save screenshots to validation-evidence/web/
 
 **Questions for you:**
 - Which pages or features are most critical to validate?
 - Any specific user flows I should test (login, checkout, etc.)?
-- Do you have a preferred browser automation tool?
 
 Does this make sense? [Approve/Modify/Skip]: _
 ```
@@ -399,13 +583,21 @@ $ ralph run -P PROMPT.md --enable-validation
 **My Validation Proposal:**
 
 For iOS apps, I recommend validating by running the app in the Simulator.
+I detected xc-mcp in your MCP servers - perfect for this.
 
 My approach:
-1. Build the app with xcodebuild
-2. Boot an iOS Simulator
-3. Install and launch the app
-4. Take screenshots to verify UI renders correctly
-5. Test key tap interactions if needed
+1. Create sandbox for build artifacts
+2. Build the app with xcodebuild
+3. Use xc-mcp to:
+   - Boot iOS Simulator (iPhone 15 Pro)
+   - Install and launch the app
+   - Take screenshots of each screen
+4. Save screenshots to validation-evidence/ios/
+
+**Success Evidence:**
+- Screenshot showing app launched
+- Screenshot of main screen with correct styling
+- Screenshot of navigation working
 
 **Questions for you:**
 - Which Simulator device should I use? (iPhone 15 Pro, etc.)
@@ -433,12 +625,20 @@ $ ralph run -P PROMPT.md --enable-validation
 **My Validation Proposal:**
 
 For CLI tools, I recommend validating by running commands and checking outputs.
+No mocks - actual command execution.
 
 My approach:
-1. Install the tool locally
-2. Run key commands with test inputs
-3. Verify exit codes and outputs
-4. Check that output files are created correctly
+1. Create sandbox: /tmp/ralph-validation-{timestamp}/
+2. Install the tool in the sandbox
+3. Run key commands with test inputs
+4. Capture stdout/stderr to files
+5. Verify exit codes and output format
+6. Save captures to validation-evidence/cli/
+
+**Success Evidence:**
+- Captured output of `--help` command
+- Captured output of main functionality
+- Exit codes = 0 for successful operations
 
 **Questions for you:**
 - What are the most important commands to test?
@@ -455,7 +655,7 @@ Would you like me to proceed with this? [Approve/Modify/Skip]: _
 1. `src/ralph_orchestrator/orchestrator.py` - Add parameters, guards, methods
 2. `src/ralph_orchestrator/__main__.py` - Add CLI flags
 3. `prompts/VALIDATION_PROPOSAL_PROMPT.md` - Create new file
-4. `tests/test_validation_feature.py` - Create test suite
+4. `validation-evidence/` - Directory for captured proof
 5. `docs/guide/validation.md` - Create documentation
 
 ## Files to Reference (Existing)
@@ -476,6 +676,8 @@ Would you like me to proceed with this? [Approve/Modify/Skip]: _
 | MCP selection | Hardcoded mapping | AI proposes flexibly |
 | User involvement | None | Confirmation required |
 | Config generation | Auto | Only after approval |
+| Testing | Mock tests | REAL execution in sandbox |
+| Evidence | Test assertions | Screenshots, captured output |
 | Fallback | None | Graceful disable if declined |
 
 ---
@@ -487,15 +689,20 @@ Would you like me to proceed with this? [Approve/Modify/Skip]: _
 - If proposal fails to generate: log warning, proceed without validation
 - If confirmation times out: treat as decline (in interactive mode)
 
+### Sandbox Requirements
+- All validation runs in isolated directory or Docker container
+- Clean up sandbox after validation completes
+- Never modify main project during validation testing
+
+### Evidence Persistence
+- Screenshots saved with timestamps
+- Output captures saved as text files
+- Evidence directory committed to repo as proof
+
 ### Future Extensions
 - Support for other adapters when they gain equivalent capabilities
 - Validation result persistence and reporting
 - Integration with CI/CD validation pipelines
-
-### Testing Considerations
-- Mock the adapter for unit tests
-- Test both interactive and non-interactive modes
-- Test the error path (non-Claude adapter)
 
 ---
 
