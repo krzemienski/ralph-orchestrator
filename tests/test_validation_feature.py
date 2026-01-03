@@ -420,5 +420,58 @@ class TestValidationProposalMethods(unittest.TestCase):
             Path(prompt_file).unlink()
 
 
+class TestValidationProposalPromptFile(unittest.TestCase):
+    """Test VALIDATION_PROPOSAL_PROMPT.md file exists and has correct content."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Get path to prompts directory relative to orchestrator
+        self.prompt_path = Path(__file__).parent.parent / "prompts" / "VALIDATION_PROPOSAL_PROMPT.md"
+
+    def test_validation_proposal_prompt_file_exists(self):
+        """Test VALIDATION_PROPOSAL_PROMPT.md exists in prompts directory."""
+        self.assertTrue(
+            self.prompt_path.exists(),
+            f"VALIDATION_PROPOSAL_PROMPT.md not found at {self.prompt_path}"
+        )
+
+    def test_validation_proposal_prompt_contains_confirm(self):
+        """Test prompt asks for user confirmation."""
+        self.assertTrue(self.prompt_path.exists(), "Prompt file must exist first")
+        content = self.prompt_path.read_text()
+        self.assertIn("confirm", content.lower())
+
+    def test_validation_proposal_prompt_contains_propose(self):
+        """Test prompt uses 'propose' language."""
+        self.assertTrue(self.prompt_path.exists(), "Prompt file must exist first")
+        content = self.prompt_path.read_text()
+        self.assertIn("propose", content.lower())
+
+    def test_validation_proposal_prompt_mentions_user_approval(self):
+        """Test prompt mentions user approval."""
+        self.assertTrue(self.prompt_path.exists(), "Prompt file must exist first")
+        content = self.prompt_path.read_text()
+        self.assertIn("user", content.lower())
+        self.assertIn("approv", content.lower())  # approval/approve
+
+    def test_validation_proposal_prompt_has_do_not_instructions(self):
+        """Test prompt has collaborative 'do not' instructions."""
+        self.assertTrue(self.prompt_path.exists(), "Prompt file must exist first")
+        content = self.prompt_path.read_text()
+        self.assertIn("do not", content.lower())
+
+    def test_validation_proposal_prompt_emphasizes_no_mocks(self):
+        """Test prompt emphasizes real execution, no mocks."""
+        self.assertTrue(self.prompt_path.exists(), "Prompt file must exist first")
+        content = self.prompt_path.read_text()
+        # Should mention real execution or no mocks
+        has_real_execution = "real" in content.lower() and "execution" in content.lower()
+        has_no_mocks = "no mock" in content.lower() or "not mock" in content.lower()
+        self.assertTrue(
+            has_real_execution or has_no_mocks,
+            "Prompt should emphasize real execution or no mocks"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
