@@ -51,3 +51,78 @@ export async function startOrchestrator(
 
   return response.json();
 }
+
+/**
+ * Response from control operations (stop/pause/resume)
+ */
+export interface ControlResponse {
+  instance_id: string;
+  status: string;
+  message?: string;
+}
+
+/**
+ * Stop a running or paused orchestrator
+ */
+export async function stopOrchestrator(instanceId: string): Promise<ControlResponse> {
+  const authHeaders = await getAuthHeaders();
+
+  const response = await fetch(`${apiClient.baseURL}/api/orchestrators/${instanceId}/stop`, {
+    method: 'POST',
+    headers: {
+      ...apiClient.defaultHeaders,
+      ...authHeaders,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to stop orchestrator');
+  }
+
+  return response.json();
+}
+
+/**
+ * Pause a running orchestrator
+ */
+export async function pauseOrchestrator(instanceId: string): Promise<ControlResponse> {
+  const authHeaders = await getAuthHeaders();
+
+  const response = await fetch(`${apiClient.baseURL}/api/orchestrators/${instanceId}/pause`, {
+    method: 'POST',
+    headers: {
+      ...apiClient.defaultHeaders,
+      ...authHeaders,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to pause orchestrator');
+  }
+
+  return response.json();
+}
+
+/**
+ * Resume a paused orchestrator
+ */
+export async function resumeOrchestrator(instanceId: string): Promise<ControlResponse> {
+  const authHeaders = await getAuthHeaders();
+
+  const response = await fetch(`${apiClient.baseURL}/api/orchestrators/${instanceId}/resume`, {
+    method: 'POST',
+    headers: {
+      ...apiClient.defaultHeaders,
+      ...authHeaders,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to resume orchestrator');
+  }
+
+  return response.json();
+}

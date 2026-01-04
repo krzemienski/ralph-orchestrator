@@ -26,7 +26,7 @@ I have analyzed the complete prompt and identified:
 | Phase 03: REST API Enhancement | ✅ COMPLETE | 22 tests |
 | Phase 04: Mobile Foundation | ✅ COMPLETE | 42 tests |
 | Phase 05: Mobile Dashboard | ✅ COMPLETE | 96 tests |
-| Phase 06: Mobile Control | ⏳ PENDING | 0 tests |
+| Phase 06: Mobile Control | ⏳ IN PROGRESS | 48 tests |
 
 ### Dependencies Flow
 
@@ -158,7 +158,7 @@ Phase 00 (TUI) ──► Phase 01 (Isolation) ──► Phase 02 (Daemon)
 | Plan | Acceptance Criteria | Tests | Status |
 |------|---------------------|-------|--------|
 | 06-01 | Start orchestration UI | 22 | ✅ DONE |
-| 06-02 | Stop/Pause/Resume buttons | ~12 | ⏳ PENDING |
+| 06-02 | Stop/Pause/Resume buttons | 26 | ✅ DONE |
 | 06-03 | Inline prompt editor | ~9 | ⏳ PENDING |
 | 06-04 | Push notifications (optional) | ~7 | ⏳ PENDING |
 
@@ -170,6 +170,14 @@ Phase 00 (TUI) ──► Phase 01 (Isolation) ──► Phase 02 (Daemon)
 - formatDuration: Human-readable duration formatting (e.g., "1h 30m")
 - getDefaultConfig: Returns {max_iterations: 50, max_runtime: 3600, auto_commit: true}
 - Created orchestratorControlApi.ts with startOrchestrator POST endpoint
+
+**Plan 06-02 Implementation Notes:**
+- Created orchestratorControlHelpers.ts with control action utilities
+- validateControlAction: Validates 'stop', 'pause', 'resume' actions
+- getConfirmationMessage: Returns user-friendly confirmation dialogs
+- isActionAllowed: State machine for valid transitions (running→pause, paused→resume, etc.)
+- getNextStatus: Returns expected status after action
+- Extended orchestratorControlApi.ts with stop/pause/resume endpoints
 
 **Validation Gate**: Complete mobile workflow functional
 
