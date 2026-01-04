@@ -72,6 +72,11 @@ max_iterations: 100
 max_runtime: 14400
 verbose: false
 
+# Validation feature (Claude-only, opt-in)
+# When enabled, AI proposes a validation strategy before executing
+enable_validation: false
+validation_interactive: true  # Require user confirmation for validation
+
 # Adapter configurations
 adapters:
   claude:
@@ -859,6 +864,11 @@ Examples:
                 config.verbose = args.verbose
             if hasattr(args, 'dry_run') and args.dry_run:
                 config.dry_run = args.dry_run
+            # Override validation settings from CLI if explicitly provided
+            if getattr(args, 'enable_validation', False):
+                config.enable_validation = True
+            if getattr(args, 'no_validation_interactive', False):
+                config.validation_interactive = False
         except Exception as e:
             _console.print_error(f"Error loading config file: {e}")
             sys.exit(1)
@@ -884,7 +894,9 @@ Examples:
             enable_metrics=not args.no_metrics,
             max_prompt_size=args.max_prompt_size,
             allow_unsafe_paths=args.allow_unsafe_paths,
-            agent_args=args.agent_args if hasattr(args, 'agent_args') else []
+            agent_args=args.agent_args if hasattr(args, 'agent_args') else [],
+            enable_validation=getattr(args, 'enable_validation', False),
+            validation_interactive=not getattr(args, 'no_validation_interactive', False),
         )
 
     # Validate prompt source exists and has content (before dry-run check)
@@ -913,6 +925,19 @@ Examples:
 ---""")
             sys.exit(1)
 
+    # Validate config before proceeding
+    validation_errors = config.validate()
+    if validation_errors:
+        _console.print_error("Configuration validation failed:")
+        for error in validation_errors:
+            _console.print_error(f"  - {error}")
+        sys.exit(1)
+
+    # Show config warnings
+    config_warnings = config.get_warnings()
+    for warning in config_warnings:
+        _console.print_warning(warning)
+
     if config.dry_run:
         _console.print_info("Dry run mode - no tools will be executed")
         _console.print_info("Configuration:")
@@ -925,6 +950,9 @@ Examples:
         _console.print_info(f"  Max iterations: {config.max_iterations}")
         _console.print_info(f"  Max runtime: {config.max_runtime}s")
         _console.print_info(f"  Max cost: ${config.max_cost:.2f}")
+        _console.print_info(f"  Validation: {'enabled' if config.enable_validation else 'disabled'}")
+        if config.enable_validation:
+            _console.print_info(f"  Validation interactive: {config.validation_interactive}")
         sys.exit(0)
     
     try:
@@ -955,12 +983,8 @@ Examples:
         acp_agent = getattr(args, 'acp_agent', None)
         acp_permission_mode = getattr(args, 'acp_permission_mode', None)
 
-        # Get validation flags from args
-        enable_validation = getattr(args, 'enable_validation', False)
-        # Note: validation_interactive is True by default, --no-validation-interactive sets it False
-        validation_interactive = not getattr(args, 'no_validation_interactive', False)
-
         # Pass full config to orchestrator so prompt_text is available
+        # Validation settings are now part of the config object
         orchestrator = RalphOrchestrator(
             prompt_file_or_config=config,
             primary_tool=primary_tool,
@@ -972,8 +996,8 @@ Examples:
             verbose=config.verbose,
             acp_agent=acp_agent,
             acp_permission_mode=acp_permission_mode,
-            enable_validation=enable_validation,
-            validation_interactive=validation_interactive
+            enable_validation=config.enable_validation,
+            validation_interactive=config.validation_interactive
         )
 
         # Enable all tools for Claude adapter (including WebSearch)
