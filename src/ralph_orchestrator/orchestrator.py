@@ -7,6 +7,7 @@ import time
 import signal
 import logging
 import asyncio
+import hashlib
 from pathlib import Path
 from typing import Dict, Any, Optional
 import json
@@ -1245,6 +1246,31 @@ Your output must be a **conversation with the user**, NOT a configuration file.
         logger.info("Starting validation proposal phase")
         self.console.print_header("Validation Proposal Phase")
 
+        # Check for existing validation criteria
+        existing_criteria = self._check_existing_criteria()
+
+        if existing_criteria:
+            # Existing criteria found - check if prompt has changed
+            prompt_changed = self._has_prompt_changed(existing_criteria)
+
+            if not prompt_changed:
+                # Prompt unchanged - reuse existing criteria
+                logger.info("Reusing existing validation criteria (prompt unchanged)")
+                self.console.print_info("Found existing validation criteria - prompt unchanged, reusing")
+                self.validation_proposal = existing_criteria['content']
+
+                if self.validation_interactive:
+                    self.console.print_message(self.validation_proposal)
+                    self.validation_approved = await self._get_user_confirmation()
+                else:
+                    self.validation_approved = True
+                    logger.info("Auto-approved existing validation criteria")
+                return
+            else:
+                # Prompt changed - regenerate but use existing as reference
+                logger.info("Prompt changed since last validation criteria - regenerating with existing as reference")
+                self.console.print_warning("Prompt changed since last criteria generation - regenerating")
+
         # Load the proposal prompt
         proposal_prompt = self._load_proposal_prompt()
 
@@ -1253,6 +1279,10 @@ Your output must be a **conversation with the user**, NOT a configuration file.
 
         # Combine prompt with project context
         full_prompt = f"{proposal_prompt}\n\n## Project Context\n{project_context}"
+
+        # If we have existing criteria, include it as reference for regeneration
+        if existing_criteria:
+            full_prompt += f"\n\n## Previous Validation Criteria (Update as needed)\n```yaml\n{existing_criteria['content'][:4000]}\n```\n\nPlease update the above criteria based on any changes to the prompt. Keep what's still valid, remove what's no longer relevant, and add new criteria for new content."
 
         # Check if prompt file is very large - don't pass it directly
         # Large prompts should be summarized in context instead
@@ -1286,6 +1316,10 @@ Your output must be a **conversation with the user**, NOT a configuration file.
                 # Non-interactive: auto-approve (for CI/CD scenarios)
                 self.validation_approved = True
                 logger.info("Auto-approved validation (non-interactive mode)")
+
+            # If approved, cache the criteria for future reuse
+            if self.validation_approved and self.validation_proposal:
+                self._save_criteria_to_cache(self.validation_proposal)
         else:
             logger.warning("Failed to generate validation proposal")
             self.validation_proposal = None
@@ -1399,6 +1433,155 @@ Your output must be a **conversation with the user**, NOT a configuration file.
             summary = summary[:8000] + "\n... [summary truncated]"
 
         return summary
+
+    def _get_prompt_identifier(self) -> str:
+        """Generate a unique identifier for the current prompt.
+
+        Uses a short hash of the prompt file path to create a stable identifier.
+        This allows storing validation criteria per-prompt.
+
+        Returns:
+            str: Short hash identifier for the prompt.
+        """
+        prompt_path = str(self.prompt_file.resolve())
+        return hashlib.sha256(prompt_path.encode()).hexdigest()[:12]
+
+    def _get_validation_cache_dir(self) -> Path:
+        """Get the validation cache directory for the current prompt.
+
+        Returns:
+            Path: Directory for storing prompt-specific validation data.
+        """
+        prompt_id = self._get_prompt_identifier()
+        cache_dir = self.agent_dir / "cache" / "validation" / prompt_id
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir
+
+    def _check_existing_criteria(self) -> Optional[dict]:
+        """Check for existing validation criteria file.
+
+        Looks in multiple locations:
+        1. Prompt-specific cache in .agent/cache/validation/{prompt_id}/
+        2. COMPREHENSIVE_ACCEPTANCE_CRITERIA.yaml in prompt's directory
+        3. COMPREHENSIVE_ACCEPTANCE_CRITERIA.yaml in current working directory
+
+        Returns:
+            dict with 'path', 'content', and 'prompt_hash' if found, None otherwise.
+        """
+        # First check prompt-specific cache
+        cache_dir = self._get_validation_cache_dir()
+        cached_criteria = cache_dir / "ACCEPTANCE_CRITERIA.yaml"
+        cached_manifest = cache_dir / "manifest.json"
+
+        if cached_criteria.exists() and cached_manifest.exists():
+            try:
+                content = cached_criteria.read_text()
+                manifest = json.loads(cached_manifest.read_text())
+                logger.info(f"Found cached validation criteria for prompt at {cached_criteria}")
+                return {
+                    'path': cached_criteria,
+                    'content': content,
+                    'prompt_hash': manifest.get('prompt_hash'),
+                    'prompt_path': manifest.get('prompt_path'),
+                    'generated_at': manifest.get('generated_at'),
+                    'source': 'cache',
+                }
+            except Exception as e:
+                logger.warning(f"Error reading cached criteria: {e}")
+
+        # Check standard locations
+        locations = [
+            self.prompt_file.parent / "COMPREHENSIVE_ACCEPTANCE_CRITERIA.yaml",
+            Path.cwd() / "COMPREHENSIVE_ACCEPTANCE_CRITERIA.yaml",
+            self.prompt_file.parent / "ACCEPTANCE_CRITERIA.yaml",
+            Path.cwd() / "ACCEPTANCE_CRITERIA.yaml",
+        ]
+
+        for criteria_path in locations:
+            if criteria_path.exists():
+                try:
+                    content = criteria_path.read_text()
+                    logger.info(f"Found existing validation criteria at {criteria_path}")
+                    return {
+                        'path': criteria_path,
+                        'content': content,
+                        'prompt_hash': None,  # Unknown - will need to regenerate if prompt changed
+                        'source': 'file',
+                    }
+                except Exception as e:
+                    logger.warning(f"Error reading criteria file {criteria_path}: {e}")
+
+        return None
+
+    def _save_criteria_to_cache(self, criteria_content: str) -> None:
+        """Save validation criteria to prompt-specific cache.
+
+        Args:
+            criteria_content: The validation criteria YAML content.
+        """
+        cache_dir = self._get_validation_cache_dir()
+
+        # Calculate current prompt hash
+        if self.prompt_file.exists():
+            prompt_content = self.prompt_file.read_text()
+            prompt_hash = hashlib.sha256(prompt_content.encode()).hexdigest()
+        else:
+            prompt_hash = "unknown"
+
+        # Save criteria
+        criteria_file = cache_dir / "ACCEPTANCE_CRITERIA.yaml"
+        criteria_file.write_text(criteria_content)
+
+        # Save manifest with metadata
+        manifest = {
+            'prompt_path': str(self.prompt_file.resolve()),
+            'prompt_hash': prompt_hash,
+            'generated_at': datetime.now().isoformat(),
+            'prompt_size_bytes': self.prompt_file.stat().st_size if self.prompt_file.exists() else 0,
+        }
+        manifest_file = cache_dir / "manifest.json"
+        manifest_file.write_text(json.dumps(manifest, indent=2))
+
+        logger.info(f"Saved validation criteria to cache: {cache_dir}")
+
+    def _has_prompt_changed(self, existing_criteria: Optional[dict] = None) -> bool:
+        """Check if the prompt has changed since last validation criteria generation.
+
+        Compares the current prompt hash against the stored hash in the criteria manifest.
+
+        Args:
+            existing_criteria: The existing criteria dict from _check_existing_criteria().
+
+        Returns:
+            bool: True if prompt has changed, False if unchanged.
+        """
+        if not self.prompt_file.exists():
+            return True  # Can't compare, assume changed
+
+        # Calculate current prompt hash
+        current_content = self.prompt_file.read_text()
+        current_hash = hashlib.sha256(current_content.encode()).hexdigest()
+
+        # If we have existing criteria with a hash, compare
+        if existing_criteria and existing_criteria.get('prompt_hash'):
+            if existing_criteria['prompt_hash'] == current_hash:
+                logger.info("Prompt hash matches - no changes detected")
+                return False
+
+        # Otherwise, check the cache manifest
+        cache_dir = self._get_validation_cache_dir()
+        manifest_file = cache_dir / "manifest.json"
+        if manifest_file.exists():
+            try:
+                manifest = json.loads(manifest_file.read_text())
+                if manifest.get('prompt_hash') == current_hash:
+                    logger.info("Prompt hash matches cached manifest - no changes detected")
+                    return False
+            except Exception:
+                pass
+
+        logger.info("Prompt has changed or no previous hash found")
+        return True
 
     async def _get_user_confirmation(self) -> bool:
         """Present proposal and get user confirmation.
