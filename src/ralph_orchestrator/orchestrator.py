@@ -8,7 +8,7 @@ import signal
 import logging
 import asyncio
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import json
 from datetime import datetime
 
@@ -21,6 +21,7 @@ from .metrics import Metrics, CostTracker, IterationStats, TriggerReason
 from .safety import SafetyGuard
 from .context import ContextManager
 from .output import RalphConsole
+from .instance import InstanceManager, InstanceInfo
 
 # Setup logging
 logging.basicConfig(
@@ -50,6 +51,7 @@ class RalphOrchestrator:
         output_preview_length: int = 500,
         enable_validation: bool = False,
         validation_interactive: bool = True,
+        instance_manager: InstanceManager = None,
     ):
         """Initialize the orchestrator.
 
@@ -69,6 +71,7 @@ class RalphOrchestrator:
             output_preview_length: Max chars for output preview in telemetry
             enable_validation: Enable validation feature (opt-in, Claude-only)
             validation_interactive: Require user confirmation for validation (default True)
+            instance_manager: Optional InstanceManager for per-instance isolation
 
         Raises:
             ValueError: If enable_validation=True with non-Claude adapter
@@ -110,6 +113,22 @@ class RalphOrchestrator:
             self.output_preview_length = output_preview_length
             self.enable_validation = enable_validation
             self.validation_interactive = validation_interactive
+
+        # Initialize instance management (for per-instance isolation)
+        self.instance_manager = instance_manager
+        self.instance_info: Optional[InstanceInfo] = None
+
+        if self.instance_manager:
+            # Create a new instance for this orchestrator run
+            self.instance_info = self.instance_manager.create_instance(
+                str(self.prompt_file)
+            )
+            # Use per-instance agent directory
+            self.agent_dir = Path(f".agent-{self.instance_info.id}")
+            logger.info(f"Created instance {self.instance_info.id}")
+        else:
+            # Default: shared .agent directory (backward compatible)
+            self.agent_dir = Path(".agent")
 
         # Initialize components
         self.metrics = Metrics()
@@ -157,8 +176,8 @@ class RalphOrchestrator:
         
         # Create directories
         self.archive_dir.mkdir(parents=True, exist_ok=True)
-        Path(".agent").mkdir(exist_ok=True)
-        
+        self.agent_dir.mkdir(exist_ok=True)
+
         logger.info(f"Ralph Orchestrator initialized with {primary_tool}")
     
     def _initialize_adapters(self) -> Dict[str, ToolAdapter]:
@@ -876,11 +895,22 @@ class RalphOrchestrator:
             'current_iteration': self.metrics.iterations,
             'task_duration': (time.time() - self.task_start_time) if self.task_start_time else None
         }
-    
+
+    def get_instance_id(self) -> Optional[str]:
+        """Get the instance ID if running with instance isolation.
+
+        Returns:
+            str: The 8-character instance ID, or None if no instance manager.
+        """
+        if self.instance_info:
+            return self.instance_info.id
+        return None
+
     def get_orchestrator_state(self) -> Dict[str, Any]:
         """Get comprehensive orchestrator state."""
         return {
-            'id': id(self),  # Unique instance ID
+            'id': id(self),  # Python object ID
+            'instance_id': self.get_instance_id(),  # 8-char instance ID if isolated
             'status': 'paused' if self.stop_requested else 'running',
             'primary_tool': self.primary_tool,
             'prompt_file': str(self.prompt_file),
