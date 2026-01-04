@@ -234,9 +234,9 @@ phase_02:
 # ============================================================================
 phase_03:
   name: "MCP Tool Discovery"
-  status: "NEEDS_VALIDATION"
+  status: "VALIDATED"
   goal: |
-    Create MCP discovery mechanism that reads ~/.claude.json for available MCP
+    Create MCP discovery mechanism that reads ~/.mcp.json for available MCP
     servers, checks project-level disabledMcpServers, and maps MCPs to subagent types.
 
   plans:

@@ -8,6 +8,10 @@ from ralph_orchestrator.orchestration.discovery import (
     discover_skills,
     get_skills_for_subagent,
     get_required_skills_for_subagent,
+    MCPInfo,
+    discover_mcps,
+    get_mcps_for_subagent,
+    get_required_mcps_for_subagent,
 )
 
 __all__ = [
@@ -17,4 +21,8 @@ __all__ = [
     "discover_skills",
     "get_skills_for_subagent",
     "get_required_skills_for_subagent",
+    "MCPInfo",
+    "discover_mcps",
+    "get_mcps_for_subagent",
+    "get_required_mcps_for_subagent",
 ]

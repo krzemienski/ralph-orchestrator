@@ -1,0 +1,42 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.1, pytest-8.4.2, pluggy-1.6.0 -- /Users/nick/Desktop/ralph-orchestrator/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/nick/Desktop/ralph-orchestrator
+configfile: pyproject.toml
+plugins: asyncio-1.1.0, anyio-4.10.0, cov-7.0.0
+asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 31 items
+
+tests/test_discovery.py::TestSkillInfo::test_skill_info_creation PASSED  [  3%]
+tests/test_discovery.py::TestSkillInfo::test_skill_info_default_subagent_types PASSED [  6%]
+tests/test_discovery.py::TestDiscoverSkills::test_discover_skills_returns_dict PASSED [  9%]
+tests/test_discovery.py::TestDiscoverSkills::test_discover_skills_finds_skills_in_directory PASSED [ 12%]
+tests/test_discovery.py::TestDiscoverSkills::test_discover_skills_parses_yaml_frontmatter PASSED [ 16%]
+tests/test_discovery.py::TestDiscoverSkills::test_discover_skills_handles_missing_directory PASSED [ 19%]
+tests/test_discovery.py::TestDiscoverSkills::test_discover_skills_skips_invalid_skill_files PASSED [ 22%]
+tests/test_discovery.py::TestGetSkillsForSubagent::test_get_skills_for_subagent_returns_dict PASSED [ 25%]
+tests/test_discovery.py::TestGetSkillsForSubagent::test_get_skills_for_subagent_filters_by_type PASSED [ 29%]
+tests/test_discovery.py::TestGetSkillsForSubagent::test_get_skills_for_subagent_includes_shared_skills PASSED [ 32%]
+tests/test_discovery.py::TestGetSkillsForSubagent::test_get_skills_for_subagent_returns_all_when_no_types_specified PASSED [ 35%]
+tests/test_discovery.py::TestSkillMapping::test_map_skills_from_profiles PASSED [ 38%]
+tests/test_discovery.py::TestSkillMapping::test_get_required_skills_returns_list PASSED [ 41%]
+tests/test_discovery.py::TestSkillMapping::test_get_required_skills_unknown_subagent PASSED [ 45%]
+tests/test_discovery.py::TestMCPInfo::test_mcp_info_creation PASSED      [ 48%]
+tests/test_discovery.py::TestMCPInfo::test_mcp_info_default_values PASSED [ 51%]
+tests/test_discovery.py::TestDiscoverMCPs::test_discover_mcps_returns_dict PASSED [ 54%]
+tests/test_discovery.py::TestDiscoverMCPs::test_discover_mcps_parses_mcp_json PASSED [ 58%]
+tests/test_discovery.py::TestDiscoverMCPs::test_discover_mcps_handles_missing_config PASSED [ 61%]
+tests/test_discovery.py::TestDiscoverMCPs::test_discover_mcps_handles_invalid_json PASSED [ 64%]
+tests/test_discovery.py::TestDiscoverMCPs::test_discover_mcps_handles_disabled_servers PASSED [ 67%]
+tests/test_discovery.py::TestDiscoverMCPs::test_discover_mcps_extracts_tools_from_env PASSED [ 70%]
+tests/test_discovery.py::TestGetMCPsForSubagent::test_get_mcps_for_subagent_returns_dict PASSED [ 74%]
+tests/test_discovery.py::TestGetMCPsForSubagent::test_get_mcps_for_subagent_includes_required_mcps PASSED [ 77%]
+tests/test_discovery.py::TestGetMCPsForSubagent::test_get_mcps_for_subagent_includes_optional_mcps PASSED [ 80%]
+tests/test_discovery.py::TestGetMCPsForSubagent::test_get_mcps_for_subagent_excludes_disabled PASSED [ 83%]
+tests/test_discovery.py::TestGetMCPsForSubagent::test_get_mcps_for_subagent_unknown_type PASSED [ 87%]
+tests/test_discovery.py::TestGetRequiredMCPsForSubagent::test_get_required_mcps_for_validator PASSED [ 90%]
+tests/test_discovery.py::TestGetRequiredMCPsForSubagent::test_get_required_mcps_for_researcher PASSED [ 93%]
+tests/test_discovery.py::TestGetRequiredMCPsForSubagent::test_get_required_mcps_returns_list PASSED [ 96%]
+tests/test_discovery.py::TestGetRequiredMCPsForSubagent::test_get_required_mcps_unknown_subagent PASSED [100%]
+
+============================== 31 passed in 0.34s ==============================

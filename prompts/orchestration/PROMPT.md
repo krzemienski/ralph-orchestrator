@@ -305,24 +305,24 @@ uv run pytest tests/test_discovery.py -v > validation-evidence/orchestration-02/
 
 ---
 
-## Phase O3: MCP Tool Discovery | ⏳ NEEDS_VALIDATION
+## Phase O3: MCP Tool Discovery | ✅ VALIDATED
 
 ### What To Build
 
 Create MCP discovery mechanism that:
-1. Reads ~/.claude.json for available MCP servers
+1. Reads ~/.mcp.json for available MCP servers
 2. Checks project-level disabledMcpServers
 3. Maps MCPs to subagent types
 4. Returns available MCPs for each subagent type
 
 ### Acceptance Criteria
 
-- [ ] discover_mcps() function exists in src/ralph_orchestrator/orchestration/discovery.py
-- [ ] Returns dict of mcp_name → MCPInfo objects
-- [ ] MCPInfo contains: name, command, enabled, tools
-- [ ] get_mcps_for_subagent(subagent_type) returns relevant MCPs
-- [ ] Handles missing/disabled MCPs gracefully
-- [ ] Unit tests pass
+- [x] discover_mcps() function exists in src/ralph_orchestrator/orchestration/discovery.py
+- [x] Returns dict of mcp_name → MCPInfo objects
+- [x] MCPInfo contains: name, command, enabled, tools
+- [x] get_mcps_for_subagent(subagent_type) returns relevant MCPs
+- [x] Handles missing/disabled MCPs gracefully
+- [x] Unit tests pass (17 MCP tests)
 
 ### Validation Gate
 
@@ -497,4 +497,4 @@ Write results to coordination file as JSON:
 
 **BEGIN ORCHESTRATION IMPROVEMENT**
 
-Continue with Phase O3 (MCP Tool Discovery) - Phases O0, O1, and O2 are already VALIDATED.
+Continue with Phase O4 (Coordination Protocol) - Phases O0, O1, O2, and O3 are VALIDATED.

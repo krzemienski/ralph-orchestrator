@@ -276,3 +276,288 @@ class TestSkillMapping:
 
         result = get_required_skills_for_subagent("unknown-type")
         assert result == []
+
+
+# ==============================================================================
+# MCP DISCOVERY TESTS (Phase O3)
+# ==============================================================================
+
+
+class TestMCPInfo:
+    """Test the MCPInfo dataclass."""
+
+    def test_mcp_info_creation(self):
+        """MCPInfo can be created with required fields."""
+        from ralph_orchestrator.orchestration.discovery import MCPInfo
+
+        info = MCPInfo(
+            name="sequential-thinking",
+            command="npx",
+            args=["-y", "@modelcontextprotocol/server-sequential-thinking"],
+            enabled=True,
+            tools=["sequentialthinking"],
+        )
+        assert info.name == "sequential-thinking"
+        assert info.command == "npx"
+        assert info.args == ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+        assert info.enabled is True
+        assert info.tools == ["sequentialthinking"]
+
+    def test_mcp_info_default_values(self):
+        """MCPInfo has sensible defaults."""
+        from ralph_orchestrator.orchestration.discovery import MCPInfo
+
+        info = MCPInfo(
+            name="test-mcp",
+            command="node",
+        )
+        assert info.args == []
+        assert info.enabled is True
+        assert info.tools == []
+
+
+class TestDiscoverMCPs:
+    """Test the discover_mcps() function."""
+
+    def test_discover_mcps_returns_dict(self):
+        """discover_mcps() returns a dict."""
+        from ralph_orchestrator.orchestration.discovery import discover_mcps
+
+        result = discover_mcps()
+        assert isinstance(result, dict)
+
+    def test_discover_mcps_parses_mcp_json(self):
+        """discover_mcps() parses ~/.mcp.json correctly."""
+        from ralph_orchestrator.orchestration.discovery import discover_mcps, MCPInfo
+        import json
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mcp_json = Path(tmpdir) / ".mcp.json"
+            mcp_json.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "test-server": {
+                                "command": "npx",
+                                "args": ["-y", "test-mcp-server"],
+                            }
+                        }
+                    }
+                )
+            )
+
+            result = discover_mcps(mcp_config_path=mcp_json)
+
+            assert "test-server" in result
+            assert isinstance(result["test-server"], MCPInfo)
+            assert result["test-server"].command == "npx"
+            assert result["test-server"].args == ["-y", "test-mcp-server"]
+
+    def test_discover_mcps_handles_missing_config(self):
+        """discover_mcps() returns empty dict for missing config file."""
+        from ralph_orchestrator.orchestration.discovery import discover_mcps
+
+        result = discover_mcps(mcp_config_path=Path("/nonexistent/.mcp.json"))
+        assert result == {}
+
+    def test_discover_mcps_handles_invalid_json(self):
+        """discover_mcps() handles invalid JSON gracefully."""
+        from ralph_orchestrator.orchestration.discovery import discover_mcps
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mcp_json = Path(tmpdir) / ".mcp.json"
+            mcp_json.write_text("not valid json {{{")
+
+            result = discover_mcps(mcp_config_path=mcp_json)
+            assert result == {}
+
+    def test_discover_mcps_handles_disabled_servers(self):
+        """discover_mcps() marks disabled servers correctly."""
+        from ralph_orchestrator.orchestration.discovery import discover_mcps
+        import json
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mcp_json = Path(tmpdir) / ".mcp.json"
+            mcp_json.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "enabled-server": {"command": "npx", "args": []},
+                            "disabled-server": {"command": "npx", "args": []},
+                        }
+                    }
+                )
+            )
+
+            # Pass disabled servers list
+            result = discover_mcps(
+                mcp_config_path=mcp_json, disabled_servers=["disabled-server"]
+            )
+
+            assert result["enabled-server"].enabled is True
+            assert result["disabled-server"].enabled is False
+
+    def test_discover_mcps_extracts_tools_from_env(self):
+        """discover_mcps() stores tools field if present in config."""
+        from ralph_orchestrator.orchestration.discovery import discover_mcps
+        import json
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mcp_json = Path(tmpdir) / ".mcp.json"
+            # Note: tools field is typically not in mcp.json but we store
+            # it from autoApprove field if present
+            mcp_json.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "test-server": {
+                                "command": "npx",
+                                "args": [],
+                                "autoApprove": ["tool1", "tool2"],
+                            }
+                        }
+                    }
+                )
+            )
+
+            result = discover_mcps(mcp_config_path=mcp_json)
+
+            # autoApprove provides hints about available tools
+            assert "tool1" in result["test-server"].tools
+            assert "tool2" in result["test-server"].tools
+
+
+class TestGetMCPsForSubagent:
+    """Test the get_mcps_for_subagent() function."""
+
+    def test_get_mcps_for_subagent_returns_dict(self):
+        """get_mcps_for_subagent() returns a dict."""
+        from ralph_orchestrator.orchestration.discovery import get_mcps_for_subagent
+
+        result = get_mcps_for_subagent("validator")
+        assert isinstance(result, dict)
+
+    def test_get_mcps_for_subagent_includes_required_mcps(self):
+        """get_mcps_for_subagent() includes required MCPs for the subagent type."""
+        from ralph_orchestrator.orchestration.discovery import get_mcps_for_subagent
+        import json
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mcp_json = Path(tmpdir) / ".mcp.json"
+            mcp_json.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "sequential-thinking": {"command": "npx", "args": []},
+                            "playwright": {"command": "npx", "args": []},
+                            "tavily": {"command": "npx", "args": []},
+                        }
+                    }
+                )
+            )
+
+            # Validator requires sequential-thinking and playwright
+            result = get_mcps_for_subagent("validator", mcp_config_path=mcp_json)
+
+            assert "sequential-thinking" in result
+            assert "playwright" in result
+
+    def test_get_mcps_for_subagent_includes_optional_mcps(self):
+        """get_mcps_for_subagent() includes optional MCPs for the subagent type."""
+        from ralph_orchestrator.orchestration.discovery import get_mcps_for_subagent
+        import json
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mcp_json = Path(tmpdir) / ".mcp.json"
+            mcp_json.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "sequential-thinking": {"command": "npx", "args": []},
+                            "firecrawl-mcp": {"command": "npx", "args": []},
+                        }
+                    }
+                )
+            )
+
+            # Validator has firecrawl-mcp as optional
+            result = get_mcps_for_subagent("validator", mcp_config_path=mcp_json)
+
+            assert "firecrawl-mcp" in result
+
+    def test_get_mcps_for_subagent_excludes_disabled(self):
+        """get_mcps_for_subagent() excludes disabled MCPs."""
+        from ralph_orchestrator.orchestration.discovery import get_mcps_for_subagent
+        import json
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mcp_json = Path(tmpdir) / ".mcp.json"
+            mcp_json.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "sequential-thinking": {"command": "npx", "args": []},
+                            "playwright": {"command": "npx", "args": []},
+                        }
+                    }
+                )
+            )
+
+            # Playwright is disabled
+            result = get_mcps_for_subagent(
+                "validator",
+                mcp_config_path=mcp_json,
+                disabled_servers=["playwright"],
+            )
+
+            assert "sequential-thinking" in result
+            assert "playwright" not in result
+
+    def test_get_mcps_for_subagent_unknown_type(self):
+        """get_mcps_for_subagent() returns empty dict for unknown subagent type."""
+        from ralph_orchestrator.orchestration.discovery import get_mcps_for_subagent
+
+        result = get_mcps_for_subagent("unknown-type")
+        assert result == {}
+
+
+class TestGetRequiredMCPsForSubagent:
+    """Test the get_required_mcps_for_subagent() function."""
+
+    def test_get_required_mcps_for_validator(self):
+        """Validator requires sequential-thinking and playwright."""
+        from ralph_orchestrator.orchestration.discovery import (
+            get_required_mcps_for_subagent,
+        )
+
+        result = get_required_mcps_for_subagent("validator")
+        assert "sequential-thinking" in result
+        assert "playwright" in result
+
+    def test_get_required_mcps_for_researcher(self):
+        """Researcher requires sequential-thinking and claude-mem."""
+        from ralph_orchestrator.orchestration.discovery import (
+            get_required_mcps_for_subagent,
+        )
+
+        result = get_required_mcps_for_subagent("researcher")
+        assert "sequential-thinking" in result
+        assert "plugin_claude-mem_mcp-search" in result
+
+    def test_get_required_mcps_returns_list(self):
+        """get_required_mcps_for_subagent() returns a list."""
+        from ralph_orchestrator.orchestration.discovery import (
+            get_required_mcps_for_subagent,
+        )
+
+        result = get_required_mcps_for_subagent("implementer")
+        assert isinstance(result, list)
+
+    def test_get_required_mcps_unknown_subagent(self):
+        """get_required_mcps_for_subagent() returns empty list for unknown type."""
+        from ralph_orchestrator.orchestration.discovery import (
+            get_required_mcps_for_subagent,
+        )
+
+        result = get_required_mcps_for_subagent("unknown-type")
+        assert result == []
