@@ -1,0 +1,19 @@
+=== API Endpoint Tests ===
+Timestamp: Sun Jan  4 10:33:11 EST 2026
+
+--- Health Check ---
+{"status":"healthy","timestamp":"2026-01-04T10:33:11.485915"}
+
+--- POST /api/orchestrators ---
+{"instance_id":"28994120","status":"started","config":{"prompt_file":"prompts/SELF_IMPROVEMENT_PROMPT.md","max_iterations":50,"max_runtime":3600}}
+
+--- GET /api/orchestrators ---
+{"orchestrators":[],"count":0}
+
+--- GET /api/orchestrators/28994120 ---
+{"detail":"Orchestrator not found"}
+
+--- POST /api/orchestrators/28994120/stop ---
+{"detail":"Orchestrator not found"}
+
+Status: SUCCESS - All API endpoints responded

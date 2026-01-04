@@ -150,6 +150,28 @@ class ConfigValidator:
         return errors
 
     @staticmethod
+    def validate_enable_validation(enable_validation: bool, agent: 'AgentType') -> List[str]:
+        """Validate enable_validation is only used with Claude adapter.
+
+        Args:
+            enable_validation: Whether validation is enabled
+            agent: The configured agent type
+
+        Returns:
+            List of validation errors
+        """
+        errors = []
+        if enable_validation:
+            # Get agent value for comparison
+            agent_value = agent.value if hasattr(agent, 'value') else str(agent)
+            if agent_value not in ("claude", "auto"):
+                errors.append(
+                    f"Validation feature is only available with Claude adapter. "
+                    f"Current agent: {agent_value}"
+                )
+        return errors
+
+    @staticmethod
     def get_warning_large_delay(retry_delay: int) -> List[str]:
         """Check for unusually large delay values."""
         if retry_delay > ConfigValidator.LARGE_DELAY_THRESHOLD_SECONDS:
@@ -225,9 +247,31 @@ class RalphConfig:
 
     # Output formatting configuration
     output_format: str = "rich"  # "plain", "rich", or "json"
-    output_verbosity: str = "normal"  # "quiet", "normal", "verbose", "debug"
+    output_verbosity: str = "verbose"  # "quiet", "normal", "verbose", "debug"
     show_token_usage: bool = True  # Display token usage after iterations
     show_timestamps: bool = True  # Include timestamps in output
+
+    # Validation feature configuration
+    enable_validation: bool = False  # Enable validation feature (opt-in, Claude-only)
+    validation_interactive: bool = True  # Require user confirmation for validation
+
+    # Web monitoring configuration
+    enable_web: bool = False  # Enable web monitoring dashboard
+    web_port: int = 8080  # Port for web server (0 = auto-find available port)
+    web_host: str = "127.0.0.1"  # Host to bind web server
+    web_no_auth: bool = False  # Disable authentication (for local dev)
+    web_open_browser: bool = False  # Auto-open browser on start
+
+    # TUI configuration
+    enable_tui: bool = False  # Enable Terminal UI mode
+    tui_theme: str = "default"  # TUI theme: default, cyberpunk, light
+
+    # Telemetry configuration
+    iteration_telemetry: bool = True  # Enable per-iteration telemetry
+    output_preview_length: int = 500  # Max chars for output preview in telemetry
+
+    # Orchestration configuration (Phase O5)
+    enable_orchestration: bool = False  # Enable subagent orchestration
 
     # Thread safety lock - not included in initialization/equals
     _lock: threading.RLock = field(
@@ -357,6 +401,7 @@ class RalphConfig:
             errors.extend(ConfigValidator.validate_max_tokens(self.max_tokens))
             errors.extend(ConfigValidator.validate_max_cost(self.max_cost))
             errors.extend(ConfigValidator.validate_context_threshold(self.context_threshold))
+            errors.extend(ConfigValidator.validate_enable_validation(self.enable_validation, self.agent))
 
         return errors
 
@@ -403,7 +448,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Ralph Wiggum Orchestrator - Put AI in a loop until done"
     )
-    
+
     parser.add_argument(
         "--agent", "-a",
         type=str,
@@ -411,7 +456,7 @@ def main():
         default="auto",
         help="AI agent to use (default: auto-detect)"
     )
-    
+
     parser.add_argument(
         "--prompt-file", "-P",
         type=str,
@@ -426,101 +471,101 @@ def main():
         default=None,
         help="Direct prompt text (overrides --prompt-file)"
     )
-    
+
     parser.add_argument(
         "--max-iterations", "-i",
         type=int,
         default=DEFAULT_MAX_ITERATIONS,
         help=f"Maximum iterations (default: {DEFAULT_MAX_ITERATIONS})"
     )
-    
+
     parser.add_argument(
         "--max-runtime", "-t",
         type=int,
         default=DEFAULT_MAX_RUNTIME,
         help=f"Maximum runtime in seconds (default: {DEFAULT_MAX_RUNTIME})"
     )
-    
+
     parser.add_argument(
         "--checkpoint-interval", "-c",
         type=int,
         default=DEFAULT_CHECKPOINT_INTERVAL,
         help=f"Checkpoint interval (default: {DEFAULT_CHECKPOINT_INTERVAL})"
     )
-    
+
     parser.add_argument(
         "--retry-delay", "-r",
         type=int,
         default=DEFAULT_RETRY_DELAY,
         help=f"Retry delay in seconds (default: {DEFAULT_RETRY_DELAY})"
     )
-    
+
     parser.add_argument(
         "--max-tokens",
         type=int,
         default=DEFAULT_MAX_TOKENS,
         help=f"Maximum total tokens (default: {DEFAULT_MAX_TOKENS:,})"
     )
-    
+
     parser.add_argument(
         "--max-cost",
         type=float,
         default=DEFAULT_MAX_COST,
         help=f"Maximum cost in USD (default: ${DEFAULT_MAX_COST:.2f})"
     )
-    
+
     parser.add_argument(
         "--context-window",
         type=int,
         default=DEFAULT_CONTEXT_WINDOW,
         help=f"Context window size in tokens (default: {DEFAULT_CONTEXT_WINDOW:,})"
     )
-    
+
     parser.add_argument(
         "--context-threshold",
         type=float,
         default=DEFAULT_CONTEXT_THRESHOLD,
         help=f"Context summarization threshold (default: {DEFAULT_CONTEXT_THRESHOLD:.1f} = {DEFAULT_CONTEXT_THRESHOLD*100:.0f}%%)"
     )
-    
+
     parser.add_argument(
         "--metrics-interval",
         type=int,
         default=DEFAULT_METRICS_INTERVAL,
         help=f"Metrics logging interval (default: {DEFAULT_METRICS_INTERVAL})"
     )
-    
+
     parser.add_argument(
         "--no-metrics",
         action="store_true",
         help="Disable metrics collection"
     )
-    
+
     parser.add_argument(
         "--max-prompt-size",
         type=int,
         default=DEFAULT_MAX_PROMPT_SIZE,
         help=f"Maximum prompt file size in bytes (default: {DEFAULT_MAX_PROMPT_SIZE})"
     )
-    
+
     parser.add_argument(
         "--allow-unsafe-paths",
         action="store_true",
         help="Allow potentially unsafe prompt paths (use with caution)"
     )
-    
+
     parser.add_argument(
         "--no-git",
         action="store_true",
         help="Disable git checkpointing"
     )
-    
+
     parser.add_argument(
         "--no-archive",
         action="store_true",
         help="Disable prompt archiving"
     )
-    
+
     parser.add_argument(
         "--verbose", "-v",
         action="store_true",
@@ -567,13 +612,13 @@ def main():
         nargs="*",
         help="Additional arguments to pass to the AI agent"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Configure logging level
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
-    
+
     # Create config
     config = RalphConfig(
         agent=AgentType(args.agent),
@@ -602,7 +647,7 @@ def main():
         show_token_usage=not args.no_token_usage,
         show_timestamps=not args.no_timestamps,
     )
-    
+
     # Run orchestrator
     orchestrator = RalphOrchestrator(config)
     return orchestrator.run()

@@ -1,0 +1,6 @@
+Discovered 14 MCP servers
+  claude-flow: enabled=True
+  ruv-swarm: enabled=True
+  memory: enabled=True
+  automatalabs-playwright-server: enabled=True
+  DeepGraph React MCP: enabled=True

@@ -142,6 +142,74 @@ Line 3"""
         assert "Original prompt" in cm.get_prompt()
 
 
+class TestContextManagerCacheResilience:
+    """Test ContextManager resilience when cache directory is deleted mid-run."""
+
+    def test_survives_cache_deletion_during_optimization(self, tmp_path):
+        """Test that cache deletion during run doesn't crash optimization.
+
+        Reproduces bug where agent deleted .agent/ directory and subsequent
+        iterations failed with FileNotFoundError when writing to cache.
+        """
+        import shutil
+
+        # Create a large prompt that triggers optimization
+        large_prompt = "# Header\n\n" + "Content " * 2000
+        cache_dir = tmp_path / "cache"
+
+        cm = ContextManager(
+            prompt_file=tmp_path / "ignored.md",
+            prompt_text=large_prompt,
+            max_context_size=1000,
+            cache_dir=cache_dir
+        )
+
+        # Verify cache dir exists
+        assert cache_dir.exists()
+
+        # First call should succeed and create cache file
+        result1 = cm.get_prompt()
+        assert len(result1) <= 1100  # Optimized
+
+        # Delete the cache directory (simulating agent cleanup)
+        shutil.rmtree(cache_dir)
+        assert not cache_dir.exists()
+
+        # This should NOT crash - it should recreate cache
+        result2 = cm.get_prompt()
+        assert len(result2) <= 1100  # Still optimized
+        assert cache_dir.exists()  # Cache dir recreated
+
+    def test_survives_agent_directory_deletion(self, tmp_path):
+        """Test full .agent/ deletion scenario."""
+        import shutil
+
+        agent_dir = tmp_path / ".agent"
+        cache_dir = agent_dir / "cache"
+
+        large_prompt = "# Task\n\n" + "Details " * 2000
+
+        cm = ContextManager(
+            prompt_file=tmp_path / "ignored.md",
+            prompt_text=large_prompt,
+            max_context_size=1000,
+            cache_dir=cache_dir
+        )
+
+        # First call succeeds
+        cm.get_prompt()
+        assert cache_dir.exists()
+
+        # Agent deletes entire .agent/ directory
+        shutil.rmtree(agent_dir)
+        assert not agent_dir.exists()
+
+        # Should recover gracefully
+        result = cm.get_prompt()
+        assert result  # Not empty
+        assert cache_dir.exists()  # Recreated
+
+
 class TestContextManagerBackwardsCompatibility:
     """Test backwards compatibility without prompt_text."""
 

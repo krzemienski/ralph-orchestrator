@@ -34,15 +34,29 @@ env/
 *~
 .DS_Store
 
+# Environment (security)
+.env
+.env.*
+!.env.example
+
 # Ralph specific
 .ralph/
 .sop/
 .agent/
 .logs/
-prompts/
+# Keep prompts tracked, but ignore archive and logs within
 prompts/archive/
+prompts/.logs/
+# NOTE: validation-evidence/ is NOT ignored - it's needed for git checkpoints and recovery
 ralph_*.log
 ralph_metrics_*.json
+docs-plans-prompts-specs/
+plans/
+
+# Claude Flow / Swarm / MCP tooling
+.claude-flow/
+.swarm/
+.playwright-mcp/
 
 # Test
 .coverage
@@ -56,3 +70,5 @@ site/
 
 .worktrees
 PROMPT.md
+/.prompts
+/.serena

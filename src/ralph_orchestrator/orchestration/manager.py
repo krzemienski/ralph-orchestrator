@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+# ABOUTME: OrchestrationManager for subagent coordination and prompt generation
+# ABOUTME: Implements Phase O5 - Integration & Subagent Spawning
+
+import asyncio
+import json
+import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
+
+from .config import SUBAGENT_PROFILES
+from .coordinator import CoordinationManager
+from .discovery import (
+    discover_skills,
+    get_required_skills_for_subagent,
+    discover_mcps,
+    get_required_mcps_for_subagent,
+)
+
+if TYPE_CHECKING:
+    from ralph_orchestrator.main import RalphConfig
+
+
+class OrchestrationManager:
+    """Manages subagent orchestration workflow.
+
+    Coordinates skill discovery, MCP profiling, prompt generation, and
+    result aggregation for subagent-based task execution.
+
+    Attributes:
+        config: RalphConfig instance with orchestration settings
+        coordinator: CoordinationManager for file-based coordination
+    """
+
+    def __init__(
+        self,
+        config: "RalphConfig",
+        base_dir: Optional[Path] = None,
+    ):
+        """Initialize OrchestrationManager.
+
+        Args:
+            config: RalphConfig instance
+            base_dir: Base directory for coordination files (defaults to cwd)
+        """
+        self.config = config
+        self.base_dir = base_dir if base_dir is not None else Path.cwd()
+        self.coordinator = CoordinationManager(self.base_dir)
+
+    def generate_subagent_prompt(
+        self,
+        subagent_type: str,
+        phase: str,
+        criteria: List[str],
+        subagent_id: str = "001",
+    ) -> str:
+        """Generate a prompt for a specific subagent type.
+
+        Creates a prompt including:
+        - Skill loading instructions
+        - MCP tool availability
+        - Coordination file paths
+        - Task description from criteria
+
+        Args:
+            subagent_type: Type of subagent (validator, researcher, implementer, analyst)
+            phase: Current phase name
+            criteria: List of acceptance criteria to validate
+            subagent_id: Unique ID for this subagent instance (default: "001")
+
+        Returns:
+            Complete prompt string for the subagent
+        """
+        profile = SUBAGENT_PROFILES.get(subagent_type)
+        if not profile:
+            raise ValueError(f"Unknown subagent type: {subagent_type}")
+
+        # Generate skill instructions
+        skill_instructions = self._generate_skill_instructions(subagent_type)
+
+        # Generate MCP list
+        mcp_list = self._generate_mcp_list(subagent_type)
+
+        # Generate task description from criteria
+        task_description = self._generate_task_description(phase, criteria)
+
+        # Use profile template with substitutions
+        prompt = profile.prompt_template.format(
+            skill_instructions=skill_instructions,
+            mcp_list=mcp_list,
+            task_description=task_description,
+            id=subagent_id,
+        )
+
+        return prompt
+
+    def _generate_skill_instructions(self, subagent_type: str) -> str:
+        """Generate skill loading instructions for a subagent.
+
+        Args:
+            subagent_type: Type of subagent
+
+        Returns:
+            Formatted skill loading instructions
+        """
+        required_skills = get_required_skills_for_subagent(subagent_type)
+        available_skills = discover_skills()
+
+        lines = []
+
+        # Add required skills
+        if required_skills:
+            lines.append("**Required Skills (MUST load):**")
+            for skill_name in required_skills:
+                if skill_name in available_skills:
+                    skill_info = available_skills[skill_name]
+                    lines.append(f"- `Skill({skill_name})` - {skill_info.description}")
+                else:
+                    lines.append(f"- `Skill({skill_name})` - (not found, but required)")
+
+        # Add note about skill loading
+        if lines:
+            lines.append("")
+            lines.append("Load these skills BEFORE starting work using the Skill tool.")
+
+        return "\n".join(lines) if lines else "No specific skills required."
+
+    def _generate_mcp_list(self, subagent_type: str) -> str:
+        """Generate MCP tool list for a subagent.
+
+        Args:
+            subagent_type: Type of subagent
+
+        Returns:
+            Formatted MCP tool list
+        """
+        required_mcps = get_required_mcps_for_subagent(subagent_type)
+        profile = SUBAGENT_PROFILES.get(subagent_type)
+        optional_mcps = profile.optional_mcps if profile else []
+
+        available_mcps = discover_mcps()
+
+        lines = []
+
+        # Add required MCPs
+        if required_mcps:
+            lines.append("**Required MCP Servers:**")
+            for mcp_name in required_mcps:
+                if mcp_name in available_mcps:
+                    mcp_info = available_mcps[mcp_name]
+                    status = "enabled" if mcp_info.enabled else "disabled"
+                    lines.append(f"- `{mcp_name}` ({status})")
+                else:
+                    lines.append(f"- `{mcp_name}` (not configured)")
+
+        # Add optional MCPs
+        if optional_mcps:
+            lines.append("")
+            lines.append("**Optional MCP Servers (if available):**")
+            for mcp_name in optional_mcps:
+                if mcp_name in available_mcps:
+                    mcp_info = available_mcps[mcp_name]
+                    if mcp_info.enabled:
+                        lines.append(f"- `{mcp_name}` (available)")
+                else:
+                    lines.append(f"- `{mcp_name}` (not configured)")
+
+        return "\n".join(lines) if lines else "Standard tools only."
+
+    def _generate_task_description(
+        self, phase: str, criteria: List[str]
+    ) -> str:
+        """Generate task description from phase and criteria.
+
+        Args:
+            phase: Current phase name
+            criteria: List of acceptance criteria
+
+        Returns:
+            Formatted task description
+        """
+        lines = [
+            f"**Phase:** {phase}",
+            "",
+            "**Acceptance Criteria:**",
+        ]
+
+        for i, criterion in enumerate(criteria, 1):
+            lines.append(f"{i}. {criterion}")
+
+        lines.append("")
+        lines.append("Validate each criterion through REAL execution and collect evidence.")
+
+        return "\n".join(lines)
+
+    def aggregate_results(self) -> Dict[str, Any]:
+        """Aggregate results from all subagents.
+
+        Collects results from coordination files and determines overall verdict.
+        Verdict is PASS only if all subagents with verdicts pass.
+
+        Returns:
+            Dict with aggregated results:
+            - verdict: "PASS" | "FAIL" | "NO_RESULTS"
+            - subagent_results: List of individual results
+            - summary: Human-readable summary
+        """
+        results = self.coordinator.collect_results()
+
+        if not results:
+            return {
+                "verdict": "NO_RESULTS",
+                "subagent_results": [],
+                "summary": "No subagent results found.",
+            }
+
+        # Check for any FAIL verdict
+        verdicts = [r.get("verdict") for r in results if "verdict" in r]
+        has_fail = any(v == "FAIL" for v in verdicts)
+        all_pass = all(v == "PASS" for v in verdicts) if verdicts else False
+
+        if has_fail:
+            overall_verdict = "FAIL"
+        elif all_pass:
+            overall_verdict = "PASS"
+        else:
+            overall_verdict = "INCONCLUSIVE"
+
+        # Generate summary
+        pass_count = sum(1 for v in verdicts if v == "PASS")
+        fail_count = sum(1 for v in verdicts if v == "FAIL")
+        summary = f"{pass_count} passed, {fail_count} failed out of {len(results)} subagent(s)"
+
+        return {
+            "verdict": overall_verdict,
+            "subagent_results": results,
+            "summary": summary,
+        }
+
+    async def spawn_subagent(
+        self,
+        subagent_type: str,
+        prompt: str,
+        timeout: int = 300,
+    ) -> Dict[str, Any]:
+        """Spawn Claude subagent and collect results.
+
+        Uses asyncio.create_subprocess_exec to run the Claude CLI with the
+        given prompt and collect its output.
+
+        Args:
+            subagent_type: Type of subagent (validator, researcher, implementer, analyst)
+            prompt: The prompt to send to Claude
+            timeout: Timeout in seconds (default 300)
+
+        Returns:
+            Dict with result including:
+            - subagent_type: The type of subagent spawned
+            - success: Whether the subprocess completed successfully
+            - return_code: Exit code from the subprocess
+            - stdout: Raw stdout from the subprocess
+            - stderr: Raw stderr from the subprocess
+            - parsed_json: Parsed JSON from stdout if available
+            - error: Error message if any error occurred
+        """
+        logger.info(f"Spawning {subagent_type} subagent with timeout={timeout}s")
+
+        result: Dict[str, Any] = {
+            "subagent_type": subagent_type,
+            "success": False,
+            "return_code": -1,
+            "stdout": "",
+            "stderr": "",
+            "parsed_json": None,
+            "error": None,
+        }
+
+        try:
+            # Create subprocess to run claude CLI
+            proc = await asyncio.create_subprocess_exec(
+                "claude",
+                "-p",
+                prompt,
+                "--output-format",
+                "json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            # Wait for completion with timeout
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=timeout,
+            )
+
+            result["stdout"] = stdout_bytes.decode("utf-8") if stdout_bytes else ""
+            result["stderr"] = stderr_bytes.decode("utf-8") if stderr_bytes else ""
+            result["return_code"] = proc.returncode if proc.returncode is not None else -1
+
+            # Try to parse JSON from stdout
+            if result["stdout"]:
+                try:
+                    result["parsed_json"] = json.loads(result["stdout"])
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse JSON from stdout: {e}")
+
+            result["success"] = result["return_code"] == 0
+            logger.info(
+                f"Subagent {subagent_type} completed with return_code={result['return_code']}"
+            )
+
+        except asyncio.TimeoutError:
+            proc.kill()  # Terminate the subprocess
+            await proc.wait()  # Reap to avoid zombies
+            result["error"] = f"Timeout after {timeout} seconds"
+            logger.error(f"Subagent {subagent_type} timed out after {timeout}s")
+        except FileNotFoundError:
+            result["error"] = "Claude CLI not found in PATH"
+            logger.error("Claude CLI not found - ensure 'claude' is installed and in PATH")
+        except Exception as e:
+            result["error"] = str(e)
+            logger.error(f"Error spawning subagent {subagent_type}: {e}")
+
+        return result

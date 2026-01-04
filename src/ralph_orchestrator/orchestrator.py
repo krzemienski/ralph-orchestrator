@@ -7,8 +7,9 @@ import time
 import signal
 import logging
 import asyncio
+import hashlib
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import json
 from datetime import datetime
 
@@ -21,6 +22,7 @@ from .metrics import Metrics, CostTracker, IterationStats, TriggerReason
 from .safety import SafetyGuard
 from .context import ContextManager
 from .output import RalphConsole
+from .instance import InstanceManager, InstanceInfo
 
 # Setup logging
 logging.basicConfig(
@@ -47,7 +49,10 @@ class RalphOrchestrator:
         acp_agent: str = None,
         acp_permission_mode: str = None,
         iteration_telemetry: bool = True,
-        output_preview_length: int = 500
+        output_preview_length: int = 500,
+        enable_validation: bool = False,
+        validation_interactive: bool = True,
+        instance_manager: InstanceManager = None,
     ):
         """Initialize the orchestrator.
 
@@ -65,6 +70,12 @@ class RalphOrchestrator:
             acp_permission_mode: ACP permission handling mode
             iteration_telemetry: Enable per-iteration telemetry capture
             output_preview_length: Max chars for output preview in telemetry
+            enable_validation: Enable validation feature (opt-in, Claude-only)
+            validation_interactive: Require user confirmation for validation (default True)
+            instance_manager: Optional InstanceManager for per-instance isolation
+
+        Raises:
+            ValueError: If enable_validation=True with non-Claude adapter
         """
         # Store ACP-specific settings
         self.acp_agent = acp_agent
@@ -85,6 +96,8 @@ class RalphOrchestrator:
             self.verbose = config.verbose if hasattr(config, 'verbose') else False
             self.iteration_telemetry = getattr(config, 'iteration_telemetry', True)
             self.output_preview_length = getattr(config, 'output_preview_length', 500)
+            self.enable_validation = getattr(config, 'enable_validation', False)
+            self.validation_interactive = getattr(config, 'validation_interactive', True)
         else:
             # Individual parameters
             self.prompt_file = Path(prompt_file_or_config if prompt_file_or_config else "PROMPT.md")
@@ -99,6 +112,24 @@ class RalphOrchestrator:
             self.verbose = verbose
             self.iteration_telemetry = iteration_telemetry
             self.output_preview_length = output_preview_length
+            self.enable_validation = enable_validation
+            self.validation_interactive = validation_interactive
+
+        # Initialize instance management (for per-instance isolation)
+        self.instance_manager = instance_manager
+        self.instance_info: Optional[InstanceInfo] = None
+
+        if self.instance_manager:
+            # Create a new instance for this orchestrator run
+            self.instance_info = self.instance_manager.create_instance(
+                str(self.prompt_file)
+            )
+            # Use per-instance agent directory
+            self.agent_dir = Path(f".agent-{self.instance_info.id}")
+            logger.info(f"Created instance {self.instance_info.id}")
+        else:
+            # Default: shared .agent directory (backward compatible)
+            self.agent_dir = Path(".agent")
 
         # Initialize components
         self.metrics = Metrics()
@@ -117,7 +148,18 @@ class RalphOrchestrator:
         if not self.current_adapter:
             logger.error(f"DEBUG: primary_tool={self.primary_tool}, adapters={list(self.adapters.keys())}")
             raise ValueError(f"Unknown tool: {self.primary_tool}")
-        
+
+        # Validation feature guard: Claude-only
+        if self.enable_validation and self.primary_tool != "claude":
+            raise ValueError(
+                f"Validation feature is only available with Claude adapter. "
+                f"Current adapter: {self.primary_tool}"
+            )
+
+        # Validation state attributes
+        self.validation_proposal = None   # Stores AI's proposed strategy
+        self.validation_approved = False  # User confirmation status
+
         # Signal handling - use basic signal registration here
         # The async handlers will be set up when arun() is called
         self.stop_requested = False
@@ -135,10 +177,84 @@ class RalphOrchestrator:
         
         # Create directories
         self.archive_dir.mkdir(parents=True, exist_ok=True)
-        Path(".agent").mkdir(exist_ok=True)
-        
+        self.agent_dir.mkdir(exist_ok=True)
+
+        # Setup file-based logging for this run
+        self._setup_file_logging()
+
+        # Check for very large prompt files and warn
+        self._check_prompt_size()
+
         logger.info(f"Ralph Orchestrator initialized with {primary_tool}")
-    
+
+    def _setup_file_logging(self) -> None:
+        """Setup file-based logging for this orchestrator run.
+
+        Creates a timestamped log file in .agent/logs/ that captures all
+        logs for this run. Each run gets its own log file.
+        """
+        from datetime import datetime
+
+        logs_dir = self.agent_dir / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create timestamped log file for this run
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = logs_dir / f"ralph_{timestamp}.log"
+
+        # Add file handler to the logger
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.DEBUG)  # Capture all levels to file
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        ))
+        logger.addHandler(file_handler)
+
+        # Store reference for cleanup
+        self._log_file_handler = file_handler
+        self._log_file_path = log_file
+
+        logger.info(f"Log file created: {log_file}")
+
+    def _check_prompt_size(self) -> None:
+        """Check prompt file size and warn if very large.
+
+        Large prompt files (> 50KB) may cause issues with agent file reading
+        tools that have token limits. This provides early warning and guidance.
+        """
+        if self.prompt_text:
+            # Using direct prompt text
+            size_bytes = len(self.prompt_text.encode('utf-8'))
+        elif self.prompt_file.exists():
+            size_bytes = self.prompt_file.stat().st_size
+        else:
+            return  # File doesn't exist, will be handled elsewhere
+
+        # Approximate token count (rough: 4 chars per token average)
+        approx_tokens = size_bytes / 4
+
+        # Warn at 50KB (~12.5K tokens) as this approaches Claude Code limits
+        if size_bytes > 50 * 1024:
+            logger.warning(
+                f"Large prompt detected: {size_bytes:,} bytes (~{int(approx_tokens):,} tokens). "
+                f"Agent may need to read file in chunks. Consider structuring prompt with clear sections "
+                f"and adding a table of contents at the top."
+            )
+            self.console.print_warning(
+                f"Large prompt: {size_bytes:,} bytes (~{int(approx_tokens):,} tokens). "
+                f"Agent will read in chunks using offset/limit."
+            )
+
+        # Strong warning at 100KB (~25K tokens) as this exceeds typical limits
+        if size_bytes > 100 * 1024:
+            logger.warning(
+                f"Very large prompt ({size_bytes:,} bytes) may cause agent read errors. "
+                f"Consider splitting into multiple files or using modular includes."
+            )
+            self.console.print_warning(
+                f"Very large prompt may cause read errors. Consider modularizing."
+            )
+
     def _initialize_adapters(self) -> Dict[str, ToolAdapter]:
         """Initialize available adapters."""
         adapters = {}
@@ -303,8 +419,20 @@ class RalphOrchestrator:
         # Set up async signal handlers now that we have a running loop
         self._setup_async_signal_handlers()
 
+        # Validation proposal phase (if enabled)
+        if self.enable_validation:
+            logger.info("Validation enabled - starting proposal phase")
+            await self._propose_validation_strategy()
+
+            if not self.validation_approved:
+                logger.info("Validation declined by user, proceeding without validation")
+                self.enable_validation = False
+            else:
+                logger.info("Validation approved by user")
+
         start_time = time.time()
         self._start_time = start_time  # Store for state retrieval
+        self.run_start_time = start_time  # For validation evidence freshness check
 
         while not self.stop_requested:
             # Check safety limits
@@ -433,8 +561,37 @@ class RalphOrchestrator:
             # Create new event loop if needed
             return asyncio.run(self._aexecute_iteration())
     
+    def _ensure_infrastructure(self) -> None:
+        """Ensure critical directories exist at start of each iteration.
+
+        This is a defensive check in case agent code inadvertently deleted
+        the .agent/ directory during previous iterations.
+        """
+        critical_dirs = [
+            self.agent_dir,
+            self.agent_dir / "cache",
+            self.agent_dir / "metrics",
+            self.agent_dir / "logs",
+        ]
+
+        recreated = False
+        for dir_path in critical_dirs:
+            if not dir_path.exists():
+                dir_path.mkdir(parents=True, exist_ok=True)
+                logger.warning(f"Recreated missing infrastructure directory: {dir_path}")
+                recreated = True
+
+        if recreated:
+            logger.warning(
+                "Infrastructure directories were missing and have been recreated. "
+                "This may indicate agent code incorrectly deleted .agent/ directory."
+            )
+
     async def _aexecute_iteration(self) -> bool:
         """Execute a single iteration asynchronously."""
+        # Ensure infrastructure directories exist (defensive check)
+        self._ensure_infrastructure()
+
         # Get the current prompt
         prompt = self.context_manager.get_prompt()
         
@@ -726,26 +883,167 @@ class RalphOrchestrator:
                 self.current_task = None
                 self.task_start_time = None
 
-    def _check_completion_marker(self) -> bool:
-        """Check if prompt contains TASK_COMPLETE marker (checkbox style).
+    def _check_validation_evidence(self) -> tuple[bool, str]:
+        """Check if validation evidence files exist, are fresh, and show success.
 
-        Supports the following marker formats:
-        - `- [x] TASK_COMPLETE` (checkbox style, recommended)
-        - `[x] TASK_COMPLETE` (checkbox without dash)
+        When validation is enabled, this checks for evidence files in
+        validation-evidence/ directory. Prevents false completion when
+        only unit tests were run without functional validation.
+
+        Validates:
+        1. Evidence directory exists
+        2. Minimum 3 evidence files across types (.png, .txt, .json)
+        3. All evidence files are FRESH (created during this run)
+        4. TXT evidence files don't contain error patterns
 
         Returns:
-            True if completion marker found, False otherwise.
+            Tuple of (has_evidence, message) - True if evidence exists, is fresh,
+            and shows success; False if evidence is missing, stale, or shows errors.
+        """
+        if not self.enable_validation:
+            return True, "Validation disabled, skipping evidence check"
+
+        evidence_dir = self.prompt_file.parent / "validation-evidence"
+        if not evidence_dir.exists():
+            return False, "validation-evidence/ directory not found"
+
+        # Count evidence files
+        png_files = list(evidence_dir.rglob("*.png"))
+        txt_files = list(evidence_dir.rglob("*.txt"))
+        json_files = list(evidence_dir.rglob("*.json"))
+        all_files = png_files + txt_files + json_files
+
+        total_evidence = len(all_files)
+
+        if total_evidence == 0:
+            return False, "No evidence files found in validation-evidence/ (need screenshots, output captures)"
+
+        # Check for minimum evidence (at least 3 files across types)
+        if total_evidence < 3:
+            return False, f"Insufficient evidence: only {total_evidence} files found (need at least 3)"
+
+        # Check evidence FRESHNESS - all files must be created during this run
+        run_start = getattr(self, 'run_start_time', None)
+        if run_start is not None:
+            stale_files = []
+            for f in all_files:
+                try:
+                    file_mtime = f.stat().st_mtime
+                    if file_mtime < run_start:
+                        stale_files.append(f.name)
+                except OSError:
+                    pass  # File disappeared, skip it
+
+            if stale_files:
+                return False, f"Stale evidence found ({len(stale_files)} files older than run start): {', '.join(stale_files[:3])}"
+
+        # Check TXT evidence CONTENT for error patterns
+        error_patterns = [
+            'network request failed',
+            'connection refused',
+            'connection failed',
+            'failed to connect',
+            'econnrefused',
+            'timeout',
+            'error:',
+            'fatal error',
+            'cannot connect',
+        ]
+
+        for txt_file in txt_files:
+            try:
+                content = txt_file.read_text(errors='ignore').lower()
+                for pattern in error_patterns:
+                    if pattern in content:
+                        return False, f"Evidence contains error in {txt_file.name}: '{pattern}' found"
+            except (OSError, IOError):
+                pass  # File unreadable, skip
+
+        # Log what was found
+        logger.info(f"Validation evidence found: {len(png_files)} screenshots, {len(txt_files)} outputs, {len(json_files)} API responses")
+
+        return True, f"Evidence found: {total_evidence} files (all fresh, no errors)"
+
+    def _check_completion_marker(self) -> bool:
+        """Check if prompt contains TASK_COMPLETE marker.
+
+        Supports multiple marker formats that agents commonly use:
+        - `- [x] TASK_COMPLETE` (checkbox style, recommended)
+        - `[x] TASK_COMPLETE` (checkbox without dash)
+        - `**TASK_COMPLETE**` (bold markdown, with optional trailing text)
+        - `TASK_COMPLETE` (standalone at line start)
+        - `Status: TASK_COMPLETE` (colon format)
+
+        Avoids false positives from mid-sentence mentions like
+        "Remember to mark TASK_COMPLETE when done."
+
+        Also validates that evidence files exist when validation is enabled.
+
+        Returns:
+            True if completion marker found AND evidence exists (if validation enabled),
+            False otherwise.
         """
         if not self.prompt_file.exists():
             return False
 
         try:
             content = self.prompt_file.read_text()
+            marker_found = False
+
             for line in content.split('\n'):
                 line_stripped = line.strip()
+
+                # Checkbox formats (original)
                 if line_stripped in ('- [x] TASK_COMPLETE', '[x] TASK_COMPLETE'):
-                    return True
-            return False
+                    marker_found = True
+                    break
+
+                # Bold markdown: **TASK_COMPLETE** (with optional trailing text)
+                if line_stripped.startswith('**TASK_COMPLETE**'):
+                    marker_found = True
+                    break
+
+                # Standalone at line start (exactly TASK_COMPLETE or TASK_COMPLETE -)
+                if line_stripped == 'TASK_COMPLETE':
+                    marker_found = True
+                    break
+                if line_stripped.startswith('TASK_COMPLETE '):
+                    # Only if it's a completion signal, not a sentence fragment
+                    # Allow: "TASK_COMPLETE - description"
+                    # Reject: "TASK_COMPLETE when all items are done"
+                    rest = line_stripped[len('TASK_COMPLETE '):]
+                    if rest.startswith('-') or rest.startswith(':'):
+                        marker_found = True
+                        break
+
+                # Colon format: "Status: TASK_COMPLETE" or "**Status**: TASK_COMPLETE"
+                if ': TASK_COMPLETE' in line_stripped:
+                    # Ensure it's at the end or followed by punctuation/space
+                    idx = line_stripped.find(': TASK_COMPLETE')
+                    after_marker = line_stripped[idx + len(': TASK_COMPLETE'):]
+                    if after_marker == '' or after_marker[0] in ' \t.,;':
+                        marker_found = True
+                        break
+
+            if not marker_found:
+                return False
+
+            # If marker found and validation enabled, check for evidence
+            if self.enable_validation:
+                has_evidence, message = self._check_validation_evidence()
+                if not has_evidence:
+                    logger.warning(f"TASK_COMPLETE marker found but validation evidence missing: {message}")
+                    self.console.print_warning(
+                        f"Cannot complete: {message}\n"
+                        "Functional validation requires evidence files (screenshots, curl output).\n"
+                        "Unit tests (npm test, pytest) are NOT sufficient."
+                    )
+                    return False
+                else:
+                    logger.info(f"Completion validated: {message}")
+
+            return True
+
         except Exception as e:
             logger.warning(f"Error checking completion marker: {e}")
             return False
@@ -811,11 +1109,22 @@ class RalphOrchestrator:
             'current_iteration': self.metrics.iterations,
             'task_duration': (time.time() - self.task_start_time) if self.task_start_time else None
         }
-    
+
+    def get_instance_id(self) -> Optional[str]:
+        """Get the instance ID if running with instance isolation.
+
+        Returns:
+            str: The 8-character instance ID, or None if no instance manager.
+        """
+        if self.instance_info:
+            return self.instance_info.id
+        return None
+
     def get_orchestrator_state(self) -> Dict[str, Any]:
         """Get comprehensive orchestrator state."""
         return {
-            'id': id(self),  # Unique instance ID
+            'id': id(self),  # Python object ID
+            'instance_id': self.get_instance_id(),  # 8-char instance ID if isolated
             'status': 'paused' if self.stop_requested else 'running',
             'primary_tool': self.primary_tool,
             'prompt_file': str(self.prompt_file),
@@ -836,3 +1145,474 @@ class RalphOrchestrator:
                 'limit': self.max_cost if self.track_costs else None
             }
         }
+
+    # =========================================================================
+    # VALIDATION PROPOSAL METHODS
+    # =========================================================================
+
+    def _load_proposal_prompt(self) -> str:
+        """Load the validation proposal prompt.
+
+        Attempts to load from prompts/VALIDATION_PROPOSAL_PROMPT.md first.
+        Falls back to an embedded default prompt if file doesn't exist.
+
+        Returns:
+            str: The validation proposal prompt text.
+        """
+        # Try to load from file first
+        prompt_path = Path(__file__).parent.parent.parent / "prompts" / "VALIDATION_PROPOSAL_PROMPT.md"
+        if prompt_path.exists():
+            return prompt_path.read_text()
+
+        # Fall back to embedded prompt (used before Phase 3 creates the file)
+        return self._get_default_proposal_prompt()
+
+    def _get_default_proposal_prompt(self) -> str:
+        """Get the default embedded validation proposal prompt.
+
+        Returns:
+            str: Default proposal prompt with collaborative language.
+        """
+        return """# Validation Strategy Proposal
+
+**SESSION 0 - PROPOSAL PHASE (requires user approval)**
+
+## Objective
+Analyze the project and PROPOSE (not auto-configure) a validation strategy.
+Present your proposal to the user for approval before proceeding.
+
+## Important Principles
+1. **Propose, don't prescribe** - Present recommendations, don't auto-generate
+2. **User decides** - The user confirms or modifies the approach
+3. **Be flexible** - Don't assume specific tools/MCPs are available
+4. **Ask questions** - Clarify what the user wants to validate
+5. **Real execution only** - No mocks, actual validation in sandbox
+
+## Your Task
+
+### Step 1: Analyze the Project
+Examine the project structure to understand:
+- What type of project is this? (web, iOS, CLI, API, library)
+- How is it built? (build commands, dependencies)
+- How does a user interact with it? (browser, simulator, command line)
+- Are there existing tests? (test frameworks, test commands)
+
+### Step 2: Discover Available Tools
+Check what MCP servers are available:
+- Browser automation (playwright, puppeteer)
+- iOS development (xc-mcp)
+- Container isolation (MCP_DOCKER)
+- Other relevant tools
+
+### Step 3: Draft a Validation Proposal
+Based on analysis, draft a proposal including:
+- What you found about the project
+- How you recommend validating it from an end-user perspective
+- What tools or methods you would use
+- How you'll capture REAL evidence (screenshots, output)
+- Where the sandbox will be located
+- What you need to know from the user
+
+### Step 4: Present to User for Confirmation
+Present your proposal conversationally and ask for confirmation.
+
+## Output Requirements
+Your output must be a **conversation with the user**, NOT a configuration file.
+
+- DO ask for explicit user confirmation
+- DO offer alternatives if the user disagrees
+- DO explain WHY you recommend a certain approach
+- DO list what questions you have for the user
+- DO explain sandbox/isolation strategy
+- DO NOT generate validation_config.json until user confirms
+- DO NOT assume specific MCP servers are available
+- DO NOT proceed with validation without user approval
+- DO NOT use mock tests - real execution only
+"""
+
+    async def _propose_validation_strategy(self) -> None:
+        """Execute validation proposal phase - AI analyzes and proposes strategy.
+
+        This method:
+        1. Loads the proposal prompt
+        2. Executes it with the Claude adapter to analyze the project
+        3. Stores the proposal for user review
+        4. Gets user confirmation if in interactive mode
+
+        After this method completes, validation_proposal will contain the AI's
+        proposed strategy, and validation_approved will indicate whether the
+        user confirmed the proposal.
+        """
+        logger.info("Starting validation proposal phase")
+        self.console.print_header("Validation Proposal Phase")
+
+        # Check for existing validation criteria
+        existing_criteria = self._check_existing_criteria()
+
+        if existing_criteria:
+            # Existing criteria found - check if prompt has changed
+            prompt_changed = self._has_prompt_changed(existing_criteria)
+
+            if not prompt_changed:
+                # Prompt unchanged - reuse existing criteria
+                logger.info("Reusing existing validation criteria (prompt unchanged)")
+                self.console.print_info("Found existing validation criteria - prompt unchanged, reusing")
+                self.validation_proposal = existing_criteria['content']
+
+                if self.validation_interactive:
+                    self.console.print_message(self.validation_proposal)
+                    self.validation_approved = await self._get_user_confirmation()
+                else:
+                    self.validation_approved = True
+                    logger.info("Auto-approved existing validation criteria")
+                return
+            else:
+                # Prompt changed - regenerate but use existing as reference
+                logger.info("Prompt changed since last validation criteria - regenerating with existing as reference")
+                self.console.print_warning("Prompt changed since last criteria generation - regenerating")
+
+        # Load the proposal prompt
+        proposal_prompt = self._load_proposal_prompt()
+
+        # Get project context for the proposal
+        project_context = self._get_project_context()
+
+        # Combine prompt with project context
+        full_prompt = f"{proposal_prompt}\n\n## Project Context\n{project_context}"
+
+        # If we have existing criteria, include it as reference for regeneration
+        if existing_criteria:
+            full_prompt += f"\n\n## Previous Validation Criteria (Update as needed)\n```yaml\n{existing_criteria['content'][:4000]}\n```\n\nPlease update the above criteria based on any changes to the prompt. Keep what's still valid, remove what's no longer relevant, and add new criteria for new content."
+
+        # Execute proposal phase - AI analyzes and proposes
+        # Always pass the full prompt_file - large prompts are expected and should be read in chunks by the agent
+        # Use lighter settings (no user skills) to avoid context overflow during validation
+        response = await self.current_adapter.aexecute(
+            full_prompt,
+            prompt_file=str(self.prompt_file),
+            verbose=self.verbose,
+            inherit_user_settings=False  # Don't load all user skills - keeps context manageable
+        )
+
+        if response.success:
+            # Store proposal for user review
+            self.validation_proposal = response.output
+            self.console.print_success("Validation proposal generated")
+
+            # If interactive mode, wait for user confirmation
+            if self.validation_interactive:
+                self.validation_approved = await self._get_user_confirmation()
+            else:
+                # Non-interactive: auto-approve (for CI/CD scenarios)
+                self.validation_approved = True
+                logger.info("Auto-approved validation (non-interactive mode)")
+
+            # If approved, cache the criteria for future reuse
+            if self.validation_approved and self.validation_proposal:
+                self._save_criteria_to_cache(self.validation_proposal)
+        else:
+            logger.warning("Failed to generate validation proposal")
+            self.validation_proposal = None
+            self.validation_approved = False
+
+    def _get_project_context(self) -> str:
+        """Gather project context for the validation proposal.
+
+        Collects information about the project structure to help the AI
+        generate an appropriate validation proposal.
+
+        Returns:
+            str: Project context summary including file types, build tools, etc.
+        """
+        context_parts = []
+
+        # Add prompt file info
+        context_parts.append(f"**Prompt File**: {self.prompt_file}")
+
+        # Check for common project indicators
+        project_root = self.prompt_file.parent
+        indicators = {
+            "package.json": "Node.js/JavaScript project",
+            "requirements.txt": "Python project",
+            "setup.py": "Python package",
+            "pyproject.toml": "Python project (modern)",
+            "Cargo.toml": "Rust project",
+            "go.mod": "Go project",
+            "Package.swift": "Swift package",
+            "*.xcodeproj": "Xcode project",
+            "*.xcworkspace": "Xcode workspace",
+            "Gemfile": "Ruby project",
+            "pom.xml": "Java Maven project",
+            "build.gradle": "Java Gradle project",
+        }
+
+        found_indicators = []
+        for pattern, description in indicators.items():
+            if pattern.startswith("*"):
+                # Glob pattern
+                matches = list(project_root.glob(pattern))
+                if matches:
+                    found_indicators.append(f"- {description} ({matches[0].name})")
+            elif (project_root / pattern).exists():
+                found_indicators.append(f"- {description}")
+
+        if found_indicators:
+            context_parts.append("**Detected Project Types**:")
+            context_parts.extend(found_indicators)
+
+        return "\n".join(context_parts)
+
+    def _get_prompt_summary(self) -> str:
+        """Extract a summary from a large prompt file for validation proposal.
+
+        For prompts that are too large to pass directly, this extracts:
+        - Main headers (# and ## lines)
+        - Phase/Plan markers
+        - Status indicators (COMPLETED, IN_PROGRESS, etc.)
+        - First and last sections
+
+        Returns:
+            str: Summary of the prompt file (max ~10KB).
+        """
+        if not self.prompt_file.exists():
+            return "Prompt file not found."
+
+        try:
+            content = self.prompt_file.read_text()
+        except Exception as e:
+            return f"Error reading prompt: {e}"
+
+        lines = content.split('\n')
+        summary_parts = []
+
+        # Extract main headers
+        headers = [l for l in lines if l.startswith('#')][:50]  # First 50 headers
+        if headers:
+            summary_parts.append("**Main Sections:**")
+            summary_parts.extend(headers[:30])  # First 30 headers
+            if len(headers) > 30:
+                summary_parts.append(f"... and {len(headers) - 30} more sections")
+
+        # Count phases/plans
+        phases = [l for l in lines if 'PHASE' in l.upper() and l.strip().startswith('#')]
+        plans = [l for l in lines if 'Plan' in l and l.strip().startswith('#')]
+        if phases or plans:
+            summary_parts.append(f"\n**Structure:** {len(phases)} phases, {len(plans)} plans")
+
+        # Count status markers
+        completed = len([l for l in lines if 'COMPLETED' in l or '✅' in l])
+        in_progress = len([l for l in lines if 'IN_PROGRESS' in l or 'IN PROGRESS' in l])
+        not_started = len([l for l in lines if 'NOT_STARTED' in l or 'NOT STARTED' in l or 'NEEDS_VALIDATION' in l])
+        if completed or in_progress or not_started:
+            summary_parts.append(f"**Status:** {completed} completed, {in_progress} in progress, {not_started} pending")
+
+        # First 20 lines (intro)
+        summary_parts.append("\n**Prompt Beginning:**")
+        summary_parts.append("```")
+        summary_parts.extend(lines[:20])
+        summary_parts.append("```")
+
+        # File size info
+        file_size = self.prompt_file.stat().st_size
+        line_count = len(lines)
+        summary_parts.append(f"\n**File Info:** {file_size:,} bytes, {line_count:,} lines")
+
+        # Truncate if still too long (max ~8KB summary)
+        summary = '\n'.join(summary_parts)
+        if len(summary) > 8000:
+            summary = summary[:8000] + "\n... [summary truncated]"
+
+        return summary
+
+    def _get_prompt_identifier(self) -> str:
+        """Generate a unique identifier for the current prompt.
+
+        Uses a short hash of the prompt file path to create a stable identifier.
+        This allows storing validation criteria per-prompt.
+
+        Returns:
+            str: Short hash identifier for the prompt.
+        """
+        prompt_path = str(self.prompt_file.resolve())
+        return hashlib.sha256(prompt_path.encode()).hexdigest()[:12]
+
+    def _get_validation_cache_dir(self) -> Path:
+        """Get the validation cache directory for the current prompt.
+
+        Returns:
+            Path: Directory for storing prompt-specific validation data.
+        """
+        prompt_id = self._get_prompt_identifier()
+        cache_dir = self.agent_dir / "cache" / "validation" / prompt_id
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir
+
+    def _check_existing_criteria(self) -> Optional[dict]:
+        """Check for existing validation criteria file.
+
+        Looks in multiple locations:
+        1. Prompt-specific cache in .agent/cache/validation/{prompt_id}/
+        2. COMPREHENSIVE_ACCEPTANCE_CRITERIA.yaml in prompt's directory
+        3. COMPREHENSIVE_ACCEPTANCE_CRITERIA.yaml in current working directory
+
+        Returns:
+            dict with 'path', 'content', and 'prompt_hash' if found, None otherwise.
+        """
+        # First check prompt-specific cache
+        cache_dir = self._get_validation_cache_dir()
+        cached_criteria = cache_dir / "ACCEPTANCE_CRITERIA.yaml"
+        cached_manifest = cache_dir / "manifest.json"
+
+        if cached_criteria.exists() and cached_manifest.exists():
+            try:
+                content = cached_criteria.read_text()
+                manifest = json.loads(cached_manifest.read_text())
+                logger.info(f"Found cached validation criteria for prompt at {cached_criteria}")
+                return {
+                    'path': cached_criteria,
+                    'content': content,
+                    'prompt_hash': manifest.get('prompt_hash'),
+                    'prompt_path': manifest.get('prompt_path'),
+                    'generated_at': manifest.get('generated_at'),
+                    'source': 'cache',
+                }
+            except Exception as e:
+                logger.warning(f"Error reading cached criteria: {e}")
+
+        # Check standard locations
+        locations = [
+            self.prompt_file.parent / "COMPREHENSIVE_ACCEPTANCE_CRITERIA.yaml",
+            Path.cwd() / "COMPREHENSIVE_ACCEPTANCE_CRITERIA.yaml",
+            self.prompt_file.parent / "ACCEPTANCE_CRITERIA.yaml",
+            Path.cwd() / "ACCEPTANCE_CRITERIA.yaml",
+        ]
+
+        for criteria_path in locations:
+            if criteria_path.exists():
+                try:
+                    content = criteria_path.read_text()
+                    logger.info(f"Found existing validation criteria at {criteria_path}")
+                    return {
+                        'path': criteria_path,
+                        'content': content,
+                        'prompt_hash': None,  # Unknown - will need to regenerate if prompt changed
+                        'source': 'file',
+                    }
+                except Exception as e:
+                    logger.warning(f"Error reading criteria file {criteria_path}: {e}")
+
+        return None
+
+    def _save_criteria_to_cache(self, criteria_content: str) -> None:
+        """Save validation criteria to prompt-specific cache.
+
+        Args:
+            criteria_content: The validation criteria YAML content.
+        """
+        cache_dir = self._get_validation_cache_dir()
+
+        # Calculate current prompt hash
+        if self.prompt_file.exists():
+            prompt_content = self.prompt_file.read_text()
+            prompt_hash = hashlib.sha256(prompt_content.encode()).hexdigest()
+        else:
+            prompt_hash = "unknown"
+
+        # Save criteria
+        criteria_file = cache_dir / "ACCEPTANCE_CRITERIA.yaml"
+        criteria_file.write_text(criteria_content)
+
+        # Save manifest with metadata
+        manifest = {
+            'prompt_path': str(self.prompt_file.resolve()),
+            'prompt_hash': prompt_hash,
+            'generated_at': datetime.now().isoformat(),
+            'prompt_size_bytes': self.prompt_file.stat().st_size if self.prompt_file.exists() else 0,
+        }
+        manifest_file = cache_dir / "manifest.json"
+        manifest_file.write_text(json.dumps(manifest, indent=2))
+
+        logger.info(f"Saved validation criteria to cache: {cache_dir}")
+
+    def _has_prompt_changed(self, existing_criteria: Optional[dict] = None) -> bool:
+        """Check if the prompt has changed since last validation criteria generation.
+
+        Compares the current prompt hash against the stored hash in the criteria manifest.
+
+        Args:
+            existing_criteria: The existing criteria dict from _check_existing_criteria().
+
+        Returns:
+            bool: True if prompt has changed, False if unchanged.
+        """
+        if not self.prompt_file.exists():
+            return True  # Can't compare, assume changed
+
+        # Calculate current prompt hash
+        current_content = self.prompt_file.read_text()
+        current_hash = hashlib.sha256(current_content.encode()).hexdigest()
+
+        # If we have existing criteria with a hash, compare
+        if existing_criteria and existing_criteria.get('prompt_hash'):
+            if existing_criteria['prompt_hash'] == current_hash:
+                logger.info("Prompt hash matches - no changes detected")
+                return False
+
+        # Otherwise, check the cache manifest
+        cache_dir = self._get_validation_cache_dir()
+        manifest_file = cache_dir / "manifest.json"
+        if manifest_file.exists():
+            try:
+                manifest = json.loads(manifest_file.read_text())
+                if manifest.get('prompt_hash') == current_hash:
+                    logger.info("Prompt hash matches cached manifest - no changes detected")
+                    return False
+            except Exception:
+                pass
+
+        logger.info("Prompt has changed or no previous hash found")
+        return True
+
+    async def _get_user_confirmation(self) -> bool:
+        """Present proposal and get user confirmation.
+
+        Displays the validation proposal to the user and prompts for
+        approval. This is only called when validation_interactive=True.
+
+        Returns:
+            bool: True if user approved, False otherwise.
+        """
+        if not self.validation_proposal:
+            logger.warning("No validation proposal to confirm")
+            return False
+
+        # Display the proposal
+        self.console.print_header("Validation Proposal")
+        self.console.print_message(self.validation_proposal)
+
+        # Prompt for user input
+        print("\n" + "=" * 60)
+        print("Do you approve this validation strategy?")
+        print("  [A]pprove - Proceed with validation")
+        print("  [M]odify  - Request changes (not yet implemented)")
+        print("  [S]kip    - Skip validation, proceed normally")
+        print("=" * 60)
+
+        try:
+            response = input("\nYour choice [A/M/S]: ").strip().lower()
+
+            if response in ('a', 'approve', 'yes', 'y'):
+                self.console.print_success("Validation approved")
+                return True
+            elif response in ('s', 'skip', 'no', 'n'):
+                self.console.print_info("Validation skipped")
+                return False
+            elif response in ('m', 'modify'):
+                self.console.print_warning("Modify not yet implemented - skipping validation")
+                return False
+            else:
+                self.console.print_warning(f"Unknown response '{response}' - skipping validation")
+                return False
+        except (EOFError, KeyboardInterrupt):
+            self.console.print_warning("Input interrupted - skipping validation")
+            return False

@@ -1,0 +1,33 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.1, pytest-8.4.2, pluggy-1.6.0 -- /Users/nick/Desktop/ralph-orchestrator/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/nick/Desktop/ralph-orchestrator
+configfile: pyproject.toml
+plugins: asyncio-1.1.0, anyio-4.10.0, cov-7.0.0
+asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 22 items
+
+tests/test_orchestration_integration.py::TestEnableOrchestrationField::test_enable_orchestration_default_false PASSED [  4%]
+tests/test_orchestration_integration.py::TestEnableOrchestrationField::test_enable_orchestration_can_be_set_true PASSED [  9%]
+tests/test_orchestration_integration.py::TestEnableOrchestrationField::test_enable_orchestration_from_yaml PASSED [ 13%]
+tests/test_orchestration_integration.py::TestOrchestrationManagerClass::test_orchestration_manager_exists PASSED [ 18%]
+tests/test_orchestration_integration.py::TestOrchestrationManagerClass::test_orchestration_manager_init_with_config PASSED [ 22%]
+tests/test_orchestration_integration.py::TestOrchestrationManagerClass::test_orchestration_manager_has_coordinator PASSED [ 27%]
+tests/test_orchestration_integration.py::TestGenerateSubagentPrompt::test_generate_subagent_prompt_exists PASSED [ 31%]
+tests/test_orchestration_integration.py::TestGenerateSubagentPrompt::test_generate_validator_prompt PASSED [ 36%]
+tests/test_orchestration_integration.py::TestGenerateSubagentPrompt::test_generate_prompt_contains_skill_instructions PASSED [ 40%]
+tests/test_orchestration_integration.py::TestGenerateSubagentPrompt::test_generate_prompt_contains_mcp_list PASSED [ 45%]
+tests/test_orchestration_integration.py::TestGenerateSubagentPrompt::test_generate_prompt_contains_coordination_paths PASSED [ 50%]
+tests/test_orchestration_integration.py::TestGenerateSubagentPrompt::test_generate_prompt_contains_task_description PASSED [ 54%]
+tests/test_orchestration_integration.py::TestGenerateSubagentPrompt::test_generate_prompt_for_all_subagent_types PASSED [ 59%]
+tests/test_orchestration_integration.py::TestAggregateResults::test_aggregate_results_exists PASSED [ 63%]
+tests/test_orchestration_integration.py::TestAggregateResults::test_aggregate_results_returns_dict PASSED [ 68%]
+tests/test_orchestration_integration.py::TestAggregateResults::test_aggregate_results_includes_verdict PASSED [ 72%]
+tests/test_orchestration_integration.py::TestAggregateResults::test_aggregate_results_pass_when_all_pass PASSED [ 77%]
+tests/test_orchestration_integration.py::TestAggregateResults::test_aggregate_results_fail_when_any_fail PASSED [ 81%]
+tests/test_orchestration_integration.py::TestAggregateResults::test_aggregate_results_includes_subagent_results PASSED [ 86%]
+tests/test_orchestration_integration.py::TestOrchestrationManagerExport::test_orchestration_manager_in_package_init PASSED [ 90%]
+tests/test_orchestration_integration.py::TestOrchestrationManagerExport::test_orchestration_manager_in_all PASSED [ 95%]
+tests/test_orchestration_integration.py::TestIntegrationScenario::test_full_orchestration_workflow PASSED [100%]
+
+============================== 22 passed in 0.43s ==============================

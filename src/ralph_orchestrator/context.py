@@ -132,6 +132,8 @@ class ContextManager:
             cache_file = self.cache_dir / f"prefix_{prefix_hash}.txt"
             
             if not cache_file.exists():
+                # Ensure cache directory exists (may have been deleted mid-run)
+                cache_file.parent.mkdir(parents=True, exist_ok=True)
                 cache_file.write_text(self.stable_prefix)
             
             # Reference the cached prefix instead of including it

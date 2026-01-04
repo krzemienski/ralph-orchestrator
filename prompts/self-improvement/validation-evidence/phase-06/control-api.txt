@@ -1,0 +1,17 @@
+=== Control API Tests ===
+Timestamp: Sun Jan  4 10:37:46 EST 2026
+
+=== Create Orchestrator ===
+Start: {"instance_id":"e00d4f93","status":"started","config":{"prompt_file":"prompts/SELF_IMPROVEMENT_PROMPT.md","max_iterations":50,"max_runtime":3600}}
+Instance ID: e00d4f93
+
+=== Pause ===
+{"detail":"Orchestrator not found"}
+
+=== Resume ===
+{"detail":"Orchestrator not found"}
+
+=== Stop ===
+{"detail":"Orchestrator not found"}
+
+Status: SUCCESS

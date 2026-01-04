@@ -264,6 +264,99 @@ class TestRalphOrchestrator(unittest.TestCase):
     # Task completion detection has been removed - orchestrator runs until limits
 
 
+class TestInfrastructureResilience(unittest.TestCase):
+    """Test infrastructure resilience when directories are deleted mid-run."""
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    def test_ensure_infrastructure_recreates_deleted_dirs(self, mock_gemini, mock_qchat, mock_claude):
+        """Test that _ensure_infrastructure recreates missing directories.
+
+        This guards against agents accidentally deleting .agent/ directory.
+        """
+        import shutil
+
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            prompt_file = tmpdir / "PROMPT.md"
+            prompt_file.write_text("# Test")
+            agent_dir = tmpdir / ".agent"
+
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=str(prompt_file),
+                primary_tool="claude",
+                max_iterations=10
+            )
+            # Override agent_dir to use temp directory
+            orchestrator.agent_dir = agent_dir
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            (agent_dir / "cache").mkdir()
+            (agent_dir / "metrics").mkdir()
+            (agent_dir / "logs").mkdir()
+
+            # Verify directories exist
+            self.assertTrue(agent_dir.exists())
+            self.assertTrue((agent_dir / "cache").exists())
+
+            # Simulate agent deleting .agent/
+            shutil.rmtree(agent_dir)
+            self.assertFalse(agent_dir.exists())
+
+            # Call _ensure_infrastructure
+            orchestrator._ensure_infrastructure()
+
+            # Directories should be recreated
+            self.assertTrue(agent_dir.exists())
+            self.assertTrue((agent_dir / "cache").exists())
+            self.assertTrue((agent_dir / "metrics").exists())
+            self.assertTrue((agent_dir / "logs").exists())
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    def test_ensure_infrastructure_handles_partial_deletion(self, mock_gemini, mock_qchat, mock_claude):
+        """Test recovery from partial directory deletion."""
+        import shutil
+
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            prompt_file = tmpdir / "PROMPT.md"
+            prompt_file.write_text("# Test")
+            agent_dir = tmpdir / ".agent"
+
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=str(prompt_file),
+                primary_tool="claude",
+                max_iterations=10
+            )
+            orchestrator.agent_dir = agent_dir
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            (agent_dir / "cache").mkdir()
+            (agent_dir / "metrics").mkdir()
+            (agent_dir / "logs").mkdir()
+
+            # Delete only cache subdir
+            shutil.rmtree(agent_dir / "cache")
+            self.assertTrue(agent_dir.exists())
+            self.assertFalse((agent_dir / "cache").exists())
+
+            orchestrator._ensure_infrastructure()
+
+            # Cache should be recreated, metrics and logs should still exist
+            self.assertTrue((agent_dir / "cache").exists())
+            self.assertTrue((agent_dir / "metrics").exists())
+            self.assertTrue((agent_dir / "logs").exists())
+
+
 class TestIterationTelemetry(unittest.TestCase):
     """Test per-iteration telemetry capture in orchestrator."""
 
@@ -422,6 +515,277 @@ class TestIterationTelemetry(unittest.TestCase):
             self.assertEqual(orchestrator.output_preview_length, 200)
             self.assertIsNotNone(orchestrator.iteration_stats)
             self.assertEqual(orchestrator.iteration_stats.max_preview_length, 200)
+        finally:
+            Path(prompt_file).unlink()
+
+
+class TestPerInstanceStateDirectories(unittest.TestCase):
+    """Test per-instance state directory isolation (Plan 01-02)."""
+
+    def setUp(self):
+        """Create temp directories for testing."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.ralph_base = Path(self.temp_dir) / ".ralph"
+
+    def tearDown(self):
+        """Clean up temp directories."""
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_orchestrator_accepts_instance_manager(self, mock_acp, mock_gemini, mock_qchat, mock_claude):
+        """Test orchestrator can accept an InstanceManager."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        from ralph_orchestrator.instance import InstanceManager
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Prompt")
+            prompt_file = f.name
+
+        try:
+            instance_manager = InstanceManager(base_dir=self.ralph_base)
+
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=prompt_file,
+                primary_tool="claude",
+                instance_manager=instance_manager,
+            )
+
+            self.assertIsNotNone(orchestrator.instance_manager)
+            self.assertEqual(orchestrator.instance_manager, instance_manager)
+        finally:
+            Path(prompt_file).unlink()
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_orchestrator_creates_instance_on_init(self, mock_acp, mock_gemini, mock_qchat, mock_claude):
+        """Test orchestrator creates instance when manager provided."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        from ralph_orchestrator.instance import InstanceManager
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Prompt")
+            prompt_file = f.name
+
+        try:
+            instance_manager = InstanceManager(base_dir=self.ralph_base)
+
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=prompt_file,
+                primary_tool="claude",
+                instance_manager=instance_manager,
+            )
+
+            # Should have created an instance
+            self.assertIsNotNone(orchestrator.instance_info)
+            self.assertEqual(len(orchestrator.instance_info.id), 8)
+            self.assertEqual(orchestrator.instance_info.prompt_file, prompt_file)
+        finally:
+            Path(prompt_file).unlink()
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_orchestrator_uses_instance_state_dir(self, mock_acp, mock_gemini, mock_qchat, mock_claude):
+        """Test orchestrator uses per-instance state directory."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        from ralph_orchestrator.instance import InstanceManager
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Prompt")
+            prompt_file = f.name
+
+        try:
+            instance_manager = InstanceManager(base_dir=self.ralph_base)
+
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=prompt_file,
+                primary_tool="claude",
+                instance_manager=instance_manager,
+            )
+
+            # State dir should be instance-specific
+            instance_id = orchestrator.instance_info.id
+            expected_state_dir = self.ralph_base / f"state-{instance_id}"
+            self.assertEqual(Path(orchestrator.instance_info.state_dir), expected_state_dir)
+            self.assertTrue(Path(orchestrator.instance_info.state_dir).exists())
+        finally:
+            Path(prompt_file).unlink()
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_orchestrator_agent_dir_is_per_instance(self, mock_acp, mock_gemini, mock_qchat, mock_claude):
+        """Test .agent directory is per-instance when manager provided."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        from ralph_orchestrator.instance import InstanceManager
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Prompt")
+            prompt_file = f.name
+
+        try:
+            instance_manager = InstanceManager(base_dir=self.ralph_base)
+
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=prompt_file,
+                primary_tool="claude",
+                instance_manager=instance_manager,
+            )
+
+            # agent_dir should be .agent-{instance_id}
+            instance_id = orchestrator.instance_info.id
+            expected_agent_dir = Path(f".agent-{instance_id}")
+            self.assertEqual(orchestrator.agent_dir, expected_agent_dir)
+        finally:
+            Path(prompt_file).unlink()
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_orchestrator_without_instance_manager_uses_default_agent_dir(self, mock_acp, mock_gemini, mock_qchat, mock_claude):
+        """Test orchestrator uses default .agent when no manager provided."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Prompt")
+            prompt_file = f.name
+
+        try:
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=prompt_file,
+                primary_tool="claude",
+            )
+
+            # Without instance manager, should use default .agent
+            self.assertEqual(orchestrator.agent_dir, Path(".agent"))
+            self.assertIsNone(orchestrator.instance_manager)
+            self.assertIsNone(orchestrator.instance_info)
+        finally:
+            Path(prompt_file).unlink()
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_two_orchestrators_have_different_state_dirs(self, mock_acp, mock_gemini, mock_qchat, mock_claude):
+        """Test two orchestrators get different state directories."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        from ralph_orchestrator.instance import InstanceManager
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Prompt 1")
+            prompt_file1 = f.name
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Prompt 2")
+            prompt_file2 = f.name
+
+        try:
+            instance_manager = InstanceManager(base_dir=self.ralph_base)
+
+            orchestrator1 = RalphOrchestrator(
+                prompt_file_or_config=prompt_file1,
+                primary_tool="claude",
+                instance_manager=instance_manager,
+            )
+
+            orchestrator2 = RalphOrchestrator(
+                prompt_file_or_config=prompt_file2,
+                primary_tool="claude",
+                instance_manager=instance_manager,
+            )
+
+            # Should have different instance IDs
+            self.assertNotEqual(orchestrator1.instance_info.id, orchestrator2.instance_info.id)
+
+            # Should have different state directories
+            self.assertNotEqual(orchestrator1.instance_info.state_dir, orchestrator2.instance_info.state_dir)
+
+            # Should have different agent directories
+            self.assertNotEqual(orchestrator1.agent_dir, orchestrator2.agent_dir)
+        finally:
+            Path(prompt_file1).unlink()
+            Path(prompt_file2).unlink()
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_get_instance_id_returns_id_when_available(self, mock_acp, mock_gemini, mock_qchat, mock_claude):
+        """Test get_instance_id returns instance ID when manager provided."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        from ralph_orchestrator.instance import InstanceManager
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Prompt")
+            prompt_file = f.name
+
+        try:
+            instance_manager = InstanceManager(base_dir=self.ralph_base)
+
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=prompt_file,
+                primary_tool="claude",
+                instance_manager=instance_manager,
+            )
+
+            instance_id = orchestrator.get_instance_id()
+            self.assertEqual(len(instance_id), 8)
+            self.assertEqual(instance_id, orchestrator.instance_info.id)
+        finally:
+            Path(prompt_file).unlink()
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    @patch('ralph_orchestrator.orchestrator.ACPAdapter')
+    def test_get_instance_id_returns_none_without_manager(self, mock_acp, mock_gemini, mock_qchat, mock_claude):
+        """Test get_instance_id returns None when no manager."""
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Test Prompt")
+            prompt_file = f.name
+
+        try:
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=prompt_file,
+                primary_tool="claude",
+            )
+
+            instance_id = orchestrator.get_instance_id()
+            self.assertIsNone(instance_id)
         finally:
             Path(prompt_file).unlink()
 

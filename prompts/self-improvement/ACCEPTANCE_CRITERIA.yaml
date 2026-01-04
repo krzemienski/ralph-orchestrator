@@ -1,0 +1,565 @@
+# Ralph Orchestrator v2.0 - Comprehensive Acceptance Criteria
+# Generated: 2026-01-04T10:18:00 (REFRESHED)
+# Scope: 7 Phases, 28 Plans
+# Validation Mode: REAL EXECUTION ONLY (no mocks)
+
+project_summary: |
+  Transform Ralph Orchestrator into a production-ready platform with:
+  1. Process isolation - Multiple instances run safely in parallel
+  2. Background execution - CLI runs as daemon, controllable remotely
+  3. REST API - Full control over orchestrations programmatically
+  4. Mobile app - Expo React Native iPhone app with full feature parity
+
+evidence_policy:
+  required: true
+  directory: validation-evidence/
+  per_phase: true
+  checkpoint_before_complete: true
+  freshness_required: true  # Evidence must be created during THIS run
+  error_patterns_rejected:
+    - "Connection refused"
+    - "ECONNREFUSED"
+    - "Network request failed"
+    - "error:"
+
+# CRITICAL: Evidence from Jan 4 06:16-07:06 AM is STALE
+# New evidence must be captured with timestamps AFTER current run start
+
+# ============================================================================
+# PHASE 00: TUI VERIFICATION & TESTING
+# Status: COMPLETE
+# ============================================================================
+phase_00:
+  name: "TUI Verification & Testing"
+  goal: "Verify existing TUI code works and add comprehensive tests"
+  status: "COMPLETE"
+  plans:
+    - plan_id: "00-01"
+      name: "Verify TUI Imports"
+      description: "Check TUI imports work without errors, all widgets load correctly"
+      status: "COMPLETE"
+      acceptance_criteria:
+        - "src/ralph_orchestrator/tui/ imports without errors"
+        - "All widget classes load correctly"
+        - "No import-time exceptions"
+      test_file: "tests/test_tui_app.py"
+      expected_tests: "10+"
+
+    - plan_id: "00-02"
+      name: "Create TUI Test Suite"
+      description: "Create comprehensive test files for TUI app and widgets"
+      status: "COMPLETE"
+      acceptance_criteria:
+        - "tests/test_tui_app.py exists with app mounting tests"
+        - "tests/test_tui_widgets.py exists with widget rendering tests"
+        - "Key binding tests for quit (q), start (s), pause (p)"
+      test_file: "tests/test_tui_app.py, tests/test_tui_widgets.py"
+      expected_tests: "40+"
+
+    - plan_id: "00-03"
+      name: "Fix TUI Issues"
+      description: "Fix any import or runtime errors found during testing"
+      status: "COMPLETE"
+      acceptance_criteria:
+        - "No import errors in TUI modules"
+        - "TUI can mount without exceptions"
+        - "Connection to orchestrator interface works"
+      test_file: "tests/test_tui_app.py"
+      expected_tests: "5+"
+
+    - plan_id: "00-04"
+      name: "End-to-End TUI Test"
+      description: "Test full TUI workflow with Textual pilot"
+      status: "COMPLETE"
+      acceptance_criteria:
+        - "Full app startup and shutdown works"
+        - "Keyboard shortcuts trigger correct actions"
+        - "Widget rendering produces expected output"
+      test_file: "tests/test_tui_app.py"
+      expected_tests: "10+"
+
+  phase_validation:
+    command: "uv run pytest tests/test_tui*.py -v --tb=short"
+    expected_result: "50+ tests passing"
+    actual_result: "60 tests passing"
+
+# ============================================================================
+# PHASE 01: PROCESS ISOLATION FOUNDATION
+# Status: IN_PROGRESS (01-01 complete, 01-02 through 01-04 pending)
+# ============================================================================
+phase_01:
+  name: "Process Isolation Foundation"
+  goal: "Enable multiple ralph instances to run safely in parallel"
+  status: "IN_PROGRESS"
+  depends_on: ["phase_00"]
+  plans:
+    - plan_id: "01-01"
+      name: "Instance ID System"
+      description: "Create InstanceManager for unique instance identification"
+      status: "COMPLETE"
+      acceptance_criteria:
+        - "src/ralph_orchestrator/instance.py exists with InstanceManager class"
+        - "InstanceInfo dataclass with id, pid, start_time, prompt_file, state_dir, port, status"
+        - "create_instance() generates 8-char hex UUID and creates state directory"
+        - "get_instance() retrieves instance by ID"
+        - "list_instances() returns all known instances"
+        - "list_running() filters to running PIDs and cleans up stale"
+        - "remove_instance() deletes instance record"
+        - "update_status() and update_port() modify instance attributes"
+      test_file: "tests/test_instance.py"
+      expected_tests: "15-20"
+      actual_tests: "17"
+
+    - plan_id: "01-02"
+      name: "Per-Instance State Directories"
+      description: "Integrate InstanceManager into orchestrator with per-instance directories"
+      status: "PENDING"
+      acceptance_criteria:
+        - "RalphOrchestrator accepts optional instance_id parameter"
+        - "Each instance uses isolated .agent-{id}/ directory for state"
+        - "Metrics stored in instance-specific paths"
+        - "Checkpoints stored in instance-specific paths"
+        - "No file conflicts when running 2+ instances"
+      test_file: "tests/test_instance.py, tests/test_orchestrator.py"
+      expected_tests: "5-10"
+
+    - plan_id: "01-03"
+      name: "Dynamic Port Allocation"
+      description: "Create port allocation system for web monitors"
+      status: "PENDING"
+      acceptance_criteria:
+        - "find_available_port() function in instance.py"
+        - "Scans port range (8080-8180) for availability"
+        - "Port stored in InstanceInfo.port"
+        - "Web monitor uses dynamically allocated port"
+        - "No port conflicts when running 2+ instances"
+      test_file: "tests/test_instance.py"
+      expected_tests: "5-8"
+
+    - plan_id: "01-04"
+      name: "Instance-Aware Git Branching"
+      description: "Git operations use instance-aware branch naming"
+      status: "PENDING"
+      acceptance_criteria:
+        - "Git branches created as ralph-{instance_id}"
+        - "Checkpoint commits isolated per instance"
+        - "Branch cleanup on instance termination"
+        - "No branch conflicts between parallel instances"
+      test_file: "tests/test_instance.py"
+      expected_tests: "5-8"
+
+  phase_validation:
+    command: "uv run pytest tests/test_instance.py tests/test_orchestrator.py -v && ralph run -P test1.md & ralph run -P test2.md &"
+    expected_result: "All tests pass; two instances run without port conflicts"
+
+# ============================================================================
+# PHASE 02: DAEMON MODE & BACKGROUND EXECUTION
+# Status: PENDING
+# ============================================================================
+phase_02:
+  name: "Daemon Mode & Background Execution"
+  goal: "CLI runs as background daemon, returns immediately"
+  status: "PENDING"
+  depends_on: ["phase_01"]
+  plans:
+    - plan_id: "02-01"
+      name: "Process Manager"
+      description: "Create DaemonManager for background process lifecycle"
+      status: "PENDING"
+      acceptance_criteria:
+        - "src/ralph_orchestrator/daemon/manager.py exists"
+        - "DaemonManager class with start(), stop(), status() methods"
+        - "Double-fork daemonization detaches from terminal"
+        - "PID file written to ~/.ralph/daemon.pid"
+        - "Cleanup on exit via atexit handler"
+        - "SIGTERM handling for graceful shutdown"
+      test_file: "tests/test_daemon.py"
+      expected_tests: "10-15"
+
+    - plan_id: "02-02"
+      name: "CLI Daemon Commands"
+      description: "Add CLI commands for daemon control"
+      status: "PENDING"
+      acceptance_criteria:
+        - "ralph daemon start - starts daemon process"
+        - "ralph daemon stop - stops daemon process"
+        - "ralph daemon status - shows running/stopped status"
+        - "ralph daemon logs - streams daemon log output"
+        - "Commands return appropriate exit codes"
+      test_file: "tests/test_daemon.py, tests/test_cli.py"
+      expected_tests: "10-12"
+
+    - plan_id: "02-03"
+      name: "IPC Mechanism"
+      description: "Implement CLI-to-daemon communication"
+      status: "PENDING"
+      acceptance_criteria:
+        - "Unix socket at ~/.ralph/daemon.sock for local IPC"
+        - "HTTP fallback for cross-platform support"
+        - "Request/response protocol for commands"
+        - "Timeout handling for unresponsive daemon"
+      test_file: "tests/test_daemon.py"
+      expected_tests: "8-12"
+
+    - plan_id: "02-04"
+      name: "Log Forwarding"
+      description: "Stream logs from daemon to CLI"
+      status: "PENDING"
+      acceptance_criteria:
+        - "Persistent log file at ~/.ralph/logs/daemon.log"
+        - "Log rotation (10MB max, 5 backups)"
+        - "Real-time streaming via IPC"
+        - "ralph daemon logs -f follows new output"
+      test_file: "tests/test_daemon.py"
+      expected_tests: "5-8"
+
+  phase_validation:
+    command: "ralph run -P test.md --daemon && sleep 2 && ralph daemon status && ralph daemon logs && ralph daemon stop"
+    expected_result: "Daemon starts (returns immediately), status shows running, logs stream, stop terminates cleanly"
+
+# ============================================================================
+# PHASE 03: REST API ENHANCEMENT
+# Status: PENDING
+# ============================================================================
+phase_03:
+  name: "REST API Enhancement"
+  goal: "Full programmatic control over orchestrations"
+  status: "PENDING"
+  depends_on: ["phase_02"]
+  plans:
+    - plan_id: "03-01"
+      name: "Start Orchestration Endpoint"
+      description: "POST /api/orchestrators to start new orchestration"
+      status: "PENDING"
+      acceptance_criteria:
+        - "POST /api/orchestrators accepts prompt_file, max_iterations, max_runtime"
+        - "Returns instance_id and status"
+        - "Creates instance via InstanceManager"
+        - "Starts orchestrator in background"
+        - "JWT authentication required"
+      test_file: "tests/test_api.py"
+      expected_tests: "5-8"
+
+    - plan_id: "03-02"
+      name: "Stop/Pause/Resume Endpoints"
+      description: "Control endpoints for running orchestrations"
+      status: "PENDING"
+      acceptance_criteria:
+        - "POST /api/orchestrators/{id}/stop terminates orchestration"
+        - "POST /api/orchestrators/{id}/pause pauses iteration loop"
+        - "POST /api/orchestrators/{id}/resume continues paused orchestration"
+        - "Appropriate error responses for invalid states"
+        - "JWT authentication required"
+      test_file: "tests/test_api.py"
+      expected_tests: "8-12"
+
+    - plan_id: "03-03"
+      name: "Configuration API"
+      description: "Update orchestration config on-the-fly"
+      status: "PENDING"
+      acceptance_criteria:
+        - "PATCH /api/orchestrators/{id}/config accepts config updates"
+        - "Can update max_iterations, timeouts, validation settings"
+        - "Returns updated configuration"
+        - "Validates config values"
+      test_file: "tests/test_api.py"
+      expected_tests: "5-8"
+
+    - plan_id: "03-04"
+      name: "Event Streaming (SSE)"
+      description: "Server-Sent Events for real-time updates"
+      status: "PENDING"
+      acceptance_criteria:
+        - "GET /api/orchestrators/{id}/events returns SSE stream"
+        - "Events include iteration progress, task updates, completion"
+        - "Heartbeat events every 30 seconds"
+        - "Connection cleanup on client disconnect"
+      test_file: "tests/test_api.py"
+      expected_tests: "5-10"
+
+  phase_validation:
+    command: |
+      curl -X POST http://localhost:8080/api/orchestrators \
+        -H "Authorization: Bearer $TOKEN" \
+        -d '{"prompt_file": "test.md"}' && \
+      curl http://localhost:8080/api/orchestrators/{id}/events
+    expected_result: "Orchestration starts via API, events stream in real-time"
+
+# ============================================================================
+# PHASE 04: MOBILE APP - FOUNDATION
+# Status: PENDING
+# ============================================================================
+phase_04:
+  name: "Mobile App Foundation"
+  goal: "Expo React Native project with core navigation and auth"
+  status: "PENDING"
+  depends_on: ["phase_03"]
+  plans:
+    - plan_id: "04-01"
+      name: "Expo Project Initialization"
+      description: "Create ralph-mobile/ Expo project with TypeScript"
+      status: "PENDING"
+      acceptance_criteria:
+        - "ralph-mobile/ directory with Expo TypeScript template"
+        - "NativeWind (TailwindCSS) configured"
+        - "expo-router for file-based routing"
+        - "Project structure matches spec (app/, components/, hooks/, lib/)"
+        - "npm test runs without errors"
+      test_file: "ralph-mobile/__tests__/App.test.tsx"
+      expected_tests: "3-5"
+
+    - plan_id: "04-02"
+      name: "Dark Theme Setup"
+      description: "Create consistent dark theme matching web UI"
+      status: "PENDING"
+      acceptance_criteria:
+        - "lib/theme.ts with color constants"
+        - "Colors match web UI (background, surface, primary, success, error)"
+        - "Theme applied consistently via NativeWind"
+        - "System dark mode respected"
+      test_file: "ralph-mobile/__tests__/theme.test.ts"
+      expected_tests: "5-8"
+
+    - plan_id: "04-03"
+      name: "Navigation Structure"
+      description: "Implement tab-based navigation"
+      status: "PENDING"
+      acceptance_criteria:
+        - "Tab navigator with Dashboard, History, Settings tabs"
+        - "Stack navigation within each tab"
+        - "app/(tabs)/_layout.tsx configures tab bar"
+        - "Tab icons and labels match design"
+      test_file: "ralph-mobile/__tests__/navigation.test.tsx"
+      expected_tests: "5-8"
+
+    - plan_id: "04-04"
+      name: "Authentication Flow"
+      description: "Implement JWT authentication"
+      status: "PENDING"
+      acceptance_criteria:
+        - "lib/api.ts with login(), logout(), getAuthHeaders()"
+        - "expo-secure-store for token storage"
+        - "Login screen at app/login.tsx"
+        - "Auth context wrapping app"
+        - "Protected routes redirect to login"
+        - "Token verification on app launch"
+      test_file: "ralph-mobile/__tests__/auth.test.tsx"
+      expected_tests: "8-12"
+
+  phase_validation:
+    command: "cd ralph-mobile && npm test && npx expo start"
+    expected_result: "Tests pass, app launches in simulator, authentication works"
+
+# ============================================================================
+# PHASE 05: MOBILE APP - DASHBOARD
+# Status: PENDING
+# ============================================================================
+phase_05:
+  name: "Mobile Dashboard"
+  goal: "View orchestration status and metrics on mobile"
+  status: "PENDING"
+  depends_on: ["phase_04"]
+  plans:
+    - plan_id: "05-01"
+      name: "Orchestrator List View"
+      description: "Dashboard showing active orchestrators"
+      status: "PENDING"
+      acceptance_criteria:
+        - "OrchestratorCard component displays id, status, iteration count"
+        - "Dashboard lists all active orchestrators"
+        - "Pull-to-refresh updates list"
+        - "Empty state when no orchestrators running"
+        - "Tap card navigates to detail view"
+      test_file: "ralph-mobile/__tests__/OrchestratorCard.test.tsx"
+      expected_tests: "8-12"
+
+    - plan_id: "05-02"
+      name: "Orchestrator Detail View"
+      description: "Full details for single orchestration"
+      status: "PENDING"
+      acceptance_criteria:
+        - "app/orchestrator/[id].tsx detail screen"
+        - "Progress information (iteration, status, elapsed time)"
+        - "Task queue display (pending, completed)"
+        - "Scrollable log output"
+        - "Back navigation to dashboard"
+      test_file: "ralph-mobile/__tests__/OrchestratorDetail.test.tsx"
+      expected_tests: "8-12"
+
+    - plan_id: "05-03"
+      name: "Real-Time Updates"
+      description: "WebSocket connection for live updates"
+      status: "PENDING"
+      acceptance_criteria:
+        - "hooks/useWebSocket.ts WebSocket connection"
+        - "Auto-reconnection on disconnect"
+        - "Connection status indicator"
+        - "Real-time orchestrator state updates"
+        - "System metrics streaming"
+      test_file: "ralph-mobile/__tests__/useWebSocket.test.ts"
+      expected_tests: "8-10"
+
+    - plan_id: "05-04"
+      name: "System Metrics Display"
+      description: "Charts for CPU, memory, process metrics"
+      status: "PENDING"
+      acceptance_criteria:
+        - "MetricsChart component with line graphs"
+        - "CPU, memory, process count charts"
+        - "60-second rolling window"
+        - "react-native-chart-kit or victory-native integration"
+      test_file: "ralph-mobile/__tests__/MetricsChart.test.tsx"
+      expected_tests: "5-8"
+
+  phase_validation:
+    command: "cd ralph-mobile && npm test && npx expo start"
+    expected_result: "Dashboard shows orchestrators, real-time updates work, metrics display correctly"
+
+# ============================================================================
+# PHASE 06: MOBILE APP - CONTROL
+# Status: PENDING
+# ============================================================================
+phase_06:
+  name: "Mobile Control"
+  goal: "Start, stop, and configure orchestrations from mobile"
+  status: "PENDING"
+  depends_on: ["phase_05"]
+  plans:
+    - plan_id: "06-01"
+      name: "Start Orchestration"
+      description: "UI to start new orchestration from mobile"
+      status: "PENDING"
+      acceptance_criteria:
+        - "Start orchestration screen accessible from dashboard"
+        - "Prompt file selection (list or manual entry)"
+        - "Configuration options (max iterations, timeout)"
+        - "Submit button calls POST /api/orchestrators"
+        - "Success/error feedback"
+        - "Navigation to new orchestrator detail"
+      test_file: "ralph-mobile/__tests__/StartOrchestration.test.tsx"
+      expected_tests: "8-12"
+
+    - plan_id: "06-02"
+      name: "Stop/Pause/Resume Controls"
+      description: "Control buttons in detail view"
+      status: "PENDING"
+      acceptance_criteria:
+        - "Stop button with confirmation dialog"
+        - "Pause/Resume toggle button"
+        - "Buttons call appropriate API endpoints"
+        - "Visual feedback during API calls"
+        - "State updates on success"
+      test_file: "ralph-mobile/__tests__/ControlButtons.test.tsx"
+      expected_tests: "10-15"
+
+    - plan_id: "06-03"
+      name: "Edit Prompt"
+      description: "Inline prompt editor in mobile app"
+      status: "PENDING"
+      acceptance_criteria:
+        - "View current prompt text"
+        - "Edit mode with text input"
+        - "Save/cancel buttons"
+        - "API call to update prompt"
+        - "Validation of prompt content"
+      test_file: "ralph-mobile/__tests__/PromptEditor.test.tsx"
+      expected_tests: "8-10"
+
+    - plan_id: "06-04"
+      name: "Push Notifications (Optional)"
+      description: "Push notifications for key events"
+      status: "PENDING"
+      acceptance_criteria:
+        - "expo-notifications configured"
+        - "Notification on orchestration complete"
+        - "Notification on error"
+        - "Notification preferences in settings"
+        - "Background notification handling"
+      test_file: "ralph-mobile/__tests__/notifications.test.ts"
+      expected_tests: "5-8"
+
+  phase_validation:
+    command: "cd ralph-mobile && npm test && npx expo start"
+    expected_result: "Full workflow: start orchestration, monitor, pause/resume, edit prompt, receive notifications"
+
+# ============================================================================
+# GLOBAL SUCCESS CRITERIA
+# ============================================================================
+global_success_criteria:
+  - criterion: "Run 2+ ralph instances simultaneously without conflicts"
+    verification: |
+      ralph run -P test1.md &
+      ralph run -P test2.md &
+      # Both should run without port/file conflicts
+    phase: "01"
+
+  - criterion: "ralph run --daemon returns immediately, runs in background"
+    verification: |
+      time ralph run -P test.md --daemon
+      # Should return in < 1 second
+      ralph daemon status  # Should show running
+    phase: "02"
+
+  - criterion: "REST API supports start/stop/pause/resume orchestrations"
+    verification: |
+      curl -X POST http://localhost:8080/api/orchestrators -d '{"prompt_file":"test.md"}'
+      curl -X POST http://localhost:8080/api/orchestrators/{id}/pause
+      curl -X POST http://localhost:8080/api/orchestrators/{id}/resume
+      curl -X POST http://localhost:8080/api/orchestrators/{id}/stop
+    phase: "03"
+
+  - criterion: "Mobile app can view and control running orchestrations"
+    verification: "Manual testing on iOS simulator - view list, detail, start/stop"
+    phase: "06"
+
+  - criterion: "All existing tests continue to pass"
+    verification: "uv run pytest tests/ -v"
+    phase: "all"
+
+  - criterion: "New tests added for all new features"
+    verification: "Test count increased by 150+ from baseline"
+    phase: "all"
+
+# ============================================================================
+# TEST ESTIMATION SUMMARY
+# ============================================================================
+test_summary:
+  baseline_tests: 1475
+  phase_00_tests: 60  # COMPLETE
+  phase_01_tests_estimate: 35  # 17 complete + 18 pending
+  phase_02_tests_estimate: 40
+  phase_03_tests_estimate: 30
+  phase_04_tests_estimate: 25
+  phase_05_tests_estimate: 35
+  phase_06_tests_estimate: 40
+  total_new_tests_estimate: 265
+  total_tests_target: 1740
+
+# ============================================================================
+# VALIDATION STRATEGY
+# ============================================================================
+validation_strategy:
+  python_backend:
+    framework: "pytest"
+    coverage_tool: "pytest-cov"
+    command: "uv run pytest tests/ -v --cov=ralph_orchestrator"
+    threshold: "80%"
+
+  mobile_app:
+    framework: "jest"
+    coverage_tool: "jest --coverage"
+    command: "cd ralph-mobile && npm test -- --coverage"
+    threshold: "70%"
+
+  evidence_collection:
+    - "Test output logs from pytest/jest"
+    - "Coverage reports"
+    - "Screenshots from expo simulator"
+    - "API response samples from curl"
+
+  real_execution_policy: |
+    All validation uses REAL execution - no mocks for integration tests:
+    - Tests must actually run and pass
+    - API tests hit real endpoints
+    - Mobile tests run in simulator
+    - CLI tests execute real commands

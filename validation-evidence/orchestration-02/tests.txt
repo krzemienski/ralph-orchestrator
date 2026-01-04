@@ -1,0 +1,25 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.1, pytest-8.4.2, pluggy-1.6.0 -- /Users/nick/Desktop/ralph-orchestrator/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/nick/Desktop/ralph-orchestrator
+configfile: pyproject.toml
+plugins: asyncio-1.1.0, anyio-4.10.0, cov-7.0.0
+asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 14 items
+
+tests/test_discovery.py::TestSkillInfo::test_skill_info_creation PASSED  [  7%]
+tests/test_discovery.py::TestSkillInfo::test_skill_info_default_subagent_types PASSED [ 14%]
+tests/test_discovery.py::TestDiscoverSkills::test_discover_skills_returns_dict PASSED [ 21%]
+tests/test_discovery.py::TestDiscoverSkills::test_discover_skills_finds_skills_in_directory PASSED [ 28%]
+tests/test_discovery.py::TestDiscoverSkills::test_discover_skills_parses_yaml_frontmatter PASSED [ 35%]
+tests/test_discovery.py::TestDiscoverSkills::test_discover_skills_handles_missing_directory PASSED [ 42%]
+tests/test_discovery.py::TestDiscoverSkills::test_discover_skills_skips_invalid_skill_files PASSED [ 50%]
+tests/test_discovery.py::TestGetSkillsForSubagent::test_get_skills_for_subagent_returns_dict PASSED [ 57%]
+tests/test_discovery.py::TestGetSkillsForSubagent::test_get_skills_for_subagent_filters_by_type PASSED [ 64%]
+tests/test_discovery.py::TestGetSkillsForSubagent::test_get_skills_for_subagent_includes_shared_skills PASSED [ 71%]
+tests/test_discovery.py::TestGetSkillsForSubagent::test_get_skills_for_subagent_returns_all_when_no_types_specified PASSED [ 78%]
+tests/test_discovery.py::TestSkillMapping::test_map_skills_from_profiles PASSED [ 85%]
+tests/test_discovery.py::TestSkillMapping::test_get_required_skills_returns_list PASSED [ 92%]
+tests/test_discovery.py::TestSkillMapping::test_get_required_skills_unknown_subagent PASSED [100%]
+
+============================== 14 passed in 0.25s ==============================
