@@ -13,6 +13,7 @@ from ralph_orchestrator.orchestration.discovery import (
     get_mcps_for_subagent,
     get_required_mcps_for_subagent,
 )
+from ralph_orchestrator.orchestration.coordinator import CoordinationManager
 
 __all__ = [
     "SubagentProfile",
@@ -25,4 +26,5 @@ __all__ = [
     "discover_mcps",
     "get_mcps_for_subagent",
     "get_required_mcps_for_subagent",
+    "CoordinationManager",
 ]

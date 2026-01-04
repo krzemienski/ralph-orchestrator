@@ -1,0 +1,33 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.1, pytest-8.4.2, pluggy-1.6.0 -- /Users/nick/Desktop/ralph-orchestrator/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/nick/Desktop/ralph-orchestrator
+configfile: pyproject.toml
+plugins: asyncio-1.1.0, anyio-4.10.0, cov-7.0.0
+asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 22 items
+
+tests/test_coordinator.py::TestCoordinationManager::test_coordinator_import PASSED [  4%]
+tests/test_coordinator.py::TestCoordinationManager::test_coordinator_creation PASSED [  9%]
+tests/test_coordinator.py::TestCoordinationManager::test_init_coordination_creates_directory_structure PASSED [ 13%]
+tests/test_coordinator.py::TestCoordinationManager::test_init_coordination_idempotent PASSED [ 18%]
+tests/test_coordinator.py::TestCoordinationManager::test_write_attempt_start_creates_json PASSED [ 22%]
+tests/test_coordinator.py::TestCoordinationManager::test_write_attempt_start_overwrites_previous PASSED [ 27%]
+tests/test_coordinator.py::TestCoordinationManager::test_write_shared_context_creates_markdown PASSED [ 31%]
+tests/test_coordinator.py::TestCoordinationManager::test_write_shared_context_formats_nicely PASSED [ 36%]
+tests/test_coordinator.py::TestCoordinationManager::test_collect_results_empty_directory PASSED [ 40%]
+tests/test_coordinator.py::TestCoordinationManager::test_collect_results_reads_json_files PASSED [ 45%]
+tests/test_coordinator.py::TestCoordinationManager::test_collect_results_ignores_non_json PASSED [ 50%]
+tests/test_coordinator.py::TestCoordinationManager::test_collect_results_handles_invalid_json PASSED [ 54%]
+tests/test_coordinator.py::TestCoordinationManager::test_append_to_journal_creates_file PASSED [ 59%]
+tests/test_coordinator.py::TestCoordinationManager::test_append_to_journal_appends_entries PASSED [ 63%]
+tests/test_coordinator.py::TestCoordinationManager::test_append_to_journal_includes_timestamp PASSED [ 68%]
+tests/test_coordinator.py::TestCoordinationManager::test_write_subagent_result PASSED [ 72%]
+tests/test_coordinator.py::TestCoordinationManager::test_get_shared_context PASSED [ 77%]
+tests/test_coordinator.py::TestCoordinationManager::test_get_shared_context_returns_none_if_missing PASSED [ 81%]
+tests/test_coordinator.py::TestCoordinationManager::test_get_current_attempt PASSED [ 86%]
+tests/test_coordinator.py::TestCoordinationManager::test_get_current_attempt_returns_none_if_missing PASSED [ 90%]
+tests/test_coordinator.py::TestCoordinationManager::test_clear_subagent_results PASSED [ 95%]
+tests/test_coordinator.py::TestCoordinationManagerDefaultDirectory::test_default_base_dir_is_cwd PASSED [100%]
+
+============================== 22 passed in 0.20s ==============================

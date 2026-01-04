@@ -1,0 +1,27 @@
+Coordination files created:
+  current-attempt.json
+  shared-context.md
+  subagent-results/
+
+=== current-attempt.json ===
+{
+  "attempt_number": 1,
+  "phase": "phase-test",
+  "criteria": [
+    "Test acceptance criteria 1",
+    "Test acceptance criteria 2"
+  ],
+  "started_at": "2026-01-04T14:07:41.758254"
+}
+
+=== shared-context.md ===
+# Shared Context
+
+Last updated: 2026-01-04T14:07:41.758362
+
+## phase
+test
+
+## criteria
+- Test criterion
+
