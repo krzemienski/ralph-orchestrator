@@ -4,10 +4,15 @@
 import uuid
 import json
 import os
+import socket
 import time
 from pathlib import Path
 from dataclasses import dataclass, asdict, field
-from typing import Optional, List
+from typing import Optional, List, Set
+
+# Port range for dynamic allocation (101 ports available)
+PORT_RANGE_START = 8080
+PORT_RANGE_END = 8180
 
 
 @dataclass
@@ -159,3 +164,77 @@ class InstanceManager:
         if info:
             info.web_port = port
             self._save_instance(info)
+
+    def get_used_ports(self) -> Set[int]:
+        """Get all ports currently assigned to instances.
+
+        Returns:
+            Set of port numbers in use by existing instances
+        """
+        ports = set()
+        for instance in self.list_instances():
+            if instance.web_port is not None:
+                ports.add(instance.web_port)
+        return ports
+
+    def find_available_port(
+        self, start: int = PORT_RANGE_START, end: int = PORT_RANGE_END
+    ) -> int:
+        """Find an available port within the configured range.
+
+        Checks both instance assignments and actual port availability.
+
+        Args:
+            start: Start of port range (default: 8080)
+            end: End of port range (default: 8180)
+
+        Returns:
+            An available port number
+
+        Raises:
+            RuntimeError: If no ports are available in the range
+        """
+        used_ports = self.get_used_ports()
+
+        for port in range(start, end + 1):
+            if port in used_ports:
+                continue
+            if self._is_port_available(port):
+                return port
+
+        raise RuntimeError(f"No available ports in range {start}-{end}")
+
+    def _is_port_available(self, port: int) -> bool:
+        """Check if a port is available for binding.
+
+        Args:
+            port: Port number to check
+
+        Returns:
+            True if port can be bound, False otherwise
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind(("127.0.0.1", port))
+            sock.close()
+            return True
+        except OSError:
+            return False
+
+    def allocate_port(self, instance_id: str) -> int:
+        """Allocate an available port to an instance.
+
+        Finds an available port, assigns it to the instance, and persists.
+
+        Args:
+            instance_id: ID of instance to allocate port to
+
+        Returns:
+            The allocated port number
+
+        Raises:
+            RuntimeError: If no ports are available
+        """
+        port = self.find_available_port()
+        self.update_port(instance_id, port)
+        return port

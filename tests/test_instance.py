@@ -181,3 +181,77 @@ class TestInstanceManager:
         with tempfile.TemporaryDirectory() as tmpdir:
             mgr = InstanceManager(Path(tmpdir))
             assert mgr._is_pid_running(999999999) is False
+
+
+class TestDynamicPortAllocation:
+    """Test dynamic port allocation for parallel instances."""
+
+    def test_find_available_port_returns_port_in_range(self):
+        """find_available_port returns a port within the configured range."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+            port = mgr.find_available_port()
+            assert 8080 <= port <= 8180
+
+    def test_find_available_port_returns_unused_port(self):
+        """find_available_port returns a port that can be bound."""
+        import socket
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+            port = mgr.find_available_port()
+            # Verify we can actually bind to this port
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                sock.bind(("127.0.0.1", port))
+                sock.close()
+            except OSError:
+                pytest.fail(f"Port {port} should be available but cannot be bound")
+
+    def test_find_available_port_skips_ports_used_by_instances(self):
+        """find_available_port skips ports already assigned to instances."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+            # Create instance with port 8080
+            info = mgr.create_instance("prompt.md")
+            mgr.update_port(info.id, 8080)
+            # Next port should skip 8080
+            port = mgr.find_available_port()
+            assert port != 8080
+
+    def test_find_available_port_with_multiple_instances(self):
+        """find_available_port returns unique ports for each call."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+            ports = set()
+            for i in range(5):
+                port = mgr.find_available_port()
+                ports.add(port)
+                # Simulate instance using the port
+                info = mgr.create_instance(f"prompt{i}.md")
+                mgr.update_port(info.id, port)
+            # All ports should be unique
+            assert len(ports) == 5
+
+    def test_allocate_port_assigns_and_persists(self):
+        """allocate_port assigns a port to instance and persists it."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+            info = mgr.create_instance("prompt.md")
+            port = mgr.allocate_port(info.id)
+            assert 8080 <= port <= 8180
+            # Verify persistence
+            updated = mgr.get_instance(info.id)
+            assert updated.web_port == port
+
+    def test_get_used_ports_returns_all_instance_ports(self):
+        """get_used_ports returns ports from all running instances."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+            # Create instances with ports
+            i1 = mgr.create_instance("p1.md")
+            mgr.update_port(i1.id, 8080)
+            i2 = mgr.create_instance("p2.md")
+            mgr.update_port(i2.id, 8085)
+            used = mgr.get_used_ports()
+            assert 8080 in used
+            assert 8085 in used
