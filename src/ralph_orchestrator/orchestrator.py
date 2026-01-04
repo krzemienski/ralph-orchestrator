@@ -1284,25 +1284,15 @@ Your output must be a **conversation with the user**, NOT a configuration file.
         if existing_criteria:
             full_prompt += f"\n\n## Previous Validation Criteria (Update as needed)\n```yaml\n{existing_criteria['content'][:4000]}\n```\n\nPlease update the above criteria based on any changes to the prompt. Keep what's still valid, remove what's no longer relevant, and add new criteria for new content."
 
-        # Check if prompt file is very large - don't pass it directly
-        # Large prompts should be summarized in context instead
-        prompt_file_size = self.prompt_file.stat().st_size if self.prompt_file.exists() else 0
-        if prompt_file_size > 100 * 1024:  # > 100KB (~25K tokens)
-            logger.info(f"Large prompt file ({prompt_file_size:,} bytes), using context summary instead of direct file reference")
-            # For large prompts, include a summary in the prompt text and don't pass file
-            prompt_summary = self._get_prompt_summary()
-            full_prompt = f"{full_prompt}\n\n## Task Prompt Summary\n{prompt_summary}"
-            response = await self.current_adapter.aexecute(
-                full_prompt,
-                verbose=self.verbose
-            )
-        else:
-            # Execute proposal phase - AI analyzes and proposes
-            response = await self.current_adapter.aexecute(
-                full_prompt,
-                prompt_file=str(self.prompt_file),
-                verbose=self.verbose
-            )
+        # Execute proposal phase - AI analyzes and proposes
+        # Always pass the full prompt_file - large prompts are expected and should be read in chunks by the agent
+        # Use lighter settings (no user skills) to avoid context overflow during validation
+        response = await self.current_adapter.aexecute(
+            full_prompt,
+            prompt_file=str(self.prompt_file),
+            verbose=self.verbose,
+            inherit_user_settings=False  # Don't load all user skills - keeps context manageable
+        )
 
         if response.success:
             # Store proposal for user review
