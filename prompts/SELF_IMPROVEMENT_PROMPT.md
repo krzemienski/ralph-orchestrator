@@ -126,11 +126,18 @@ Phase 00 (TUI) ──► Phase 01 (Isolation) ──► Phase 02 (Daemon)
 | Plan | Acceptance Criteria | Tests | Status |
 |------|---------------------|-------|--------|
 | 05-01 | OrchestratorCard list view | 20 | ✅ DONE |
-| 05-02 | Detail view with tasks and logs | ~10 | ⏳ PENDING |
+| 05-02 | Detail view with tasks and logs | 31 | ✅ DONE |
 | 05-03 | WebSocket real-time updates | ~8 | ⏳ PENDING |
 | 05-04 | MetricsChart with 60s rolling window | ~7 | ⏳ PENDING |
 
-**Status**: 62 tests passing (42 Phase 04 + 20 Phase 05-01)
+**Status**: 93 tests passing (42 Phase 04 + 20 Phase 05-01 + 31 Phase 05-02)
+
+**Plan 05-02 Implementation Notes:**
+- Added 25 helper function tests (formatTaskStatus, getTaskStatusColor, formatLogEntry, getLogLevelColor, calculateProgress, formatTimestamp)
+- Added 6 API tests (fetchOrchestratorDetail, fetchOrchestratorLogs with limit support)
+- Added warning color to theme
+- Added Task, LogEntry, OrchestratorDetail types
+- Screen component pending (next iteration)
 
 **Validation Gate**: Dashboard displays live orchestrators
 

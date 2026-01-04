@@ -39,3 +39,41 @@ export interface OrchestratorsResponse {
   orchestrators: Orchestrator[];
   total: number;
 }
+
+/**
+ * Task status values
+ */
+export type TaskStatus = 'completed' | 'running' | 'pending' | 'failed' | 'queued';
+
+/**
+ * Log level values
+ */
+export type LogLevel = 'error' | 'warning' | 'info' | 'debug';
+
+/**
+ * Task structure for orchestrator detail
+ */
+export interface Task {
+  id: string;
+  name: string;
+  status: TaskStatus;
+  started_at?: string;
+  completed_at?: string;
+}
+
+/**
+ * Log entry structure
+ */
+export interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  message: string;
+}
+
+/**
+ * Extended orchestrator detail with tasks and logs
+ */
+export interface OrchestratorDetail extends Orchestrator {
+  tasks: Task[];
+  logs: LogEntry[];
+}
