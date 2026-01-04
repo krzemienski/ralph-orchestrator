@@ -24,7 +24,7 @@ archive_prompts: true
 git_checkpoint: true
 enable_metrics: true
 verbose: true
-
+enable_validation: true
 # Enhanced telemetry for debugging self-improvement
 iteration_telemetry: true
 output_preview_length: 1000
