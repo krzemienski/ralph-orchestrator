@@ -30,7 +30,7 @@ git_checkpoint: true
 enable_metrics: true
 verbose: true
 enable_validation: true
-validation_interactive: false  # Non-interactive for autonomous runs
+validation_interactive: true  # Interactive for user approval
 
 # Web UI (auto-start with no auth)
 enable_web: true

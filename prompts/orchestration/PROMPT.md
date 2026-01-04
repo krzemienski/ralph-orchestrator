@@ -165,6 +165,22 @@ Evidence is stored in `.agent/` for run isolation:
 
 ---
 
+## ⚠️ CRITICAL: DO NOT DELETE `.agent/` DIRECTORY
+
+The `.agent/` directory is **orchestrator infrastructure**, NOT temporary files:
+- **Cache** - Prompt optimization cache for multi-iteration runs
+- **Runs** - Run isolation state with manifests and evidence
+- **Metrics** - Cost tracking and iteration statistics
+- **Coordination** - Shared context for subagent communication
+
+**NEVER run `rm -rf .agent/`** - This will crash subsequent iterations.
+
+If you create temporary test files during implementation:
+- Use a dedicated temp directory (e.g., `/tmp/` or `tempfile.mkdtemp()`)
+- Do NOT clean up `.agent/` - it's managed by the orchestrator
+
+---
+
 ## Phase O0: Run Isolation & State Management | ✅ VALIDATED
 
 ### What To Build

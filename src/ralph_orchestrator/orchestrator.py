@@ -178,8 +178,82 @@ class RalphOrchestrator:
         self.archive_dir.mkdir(parents=True, exist_ok=True)
         self.agent_dir.mkdir(exist_ok=True)
 
+        # Setup file-based logging for this run
+        self._setup_file_logging()
+
+        # Check for very large prompt files and warn
+        self._check_prompt_size()
+
         logger.info(f"Ralph Orchestrator initialized with {primary_tool}")
-    
+
+    def _setup_file_logging(self) -> None:
+        """Setup file-based logging for this orchestrator run.
+
+        Creates a timestamped log file in .agent/logs/ that captures all
+        logs for this run. Each run gets its own log file.
+        """
+        from datetime import datetime
+
+        logs_dir = self.agent_dir / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create timestamped log file for this run
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = logs_dir / f"ralph_{timestamp}.log"
+
+        # Add file handler to the logger
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.DEBUG)  # Capture all levels to file
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        ))
+        logger.addHandler(file_handler)
+
+        # Store reference for cleanup
+        self._log_file_handler = file_handler
+        self._log_file_path = log_file
+
+        logger.info(f"Log file created: {log_file}")
+
+    def _check_prompt_size(self) -> None:
+        """Check prompt file size and warn if very large.
+
+        Large prompt files (> 50KB) may cause issues with agent file reading
+        tools that have token limits. This provides early warning and guidance.
+        """
+        if self.prompt_text:
+            # Using direct prompt text
+            size_bytes = len(self.prompt_text.encode('utf-8'))
+        elif self.prompt_file.exists():
+            size_bytes = self.prompt_file.stat().st_size
+        else:
+            return  # File doesn't exist, will be handled elsewhere
+
+        # Approximate token count (rough: 4 chars per token average)
+        approx_tokens = size_bytes / 4
+
+        # Warn at 50KB (~12.5K tokens) as this approaches Claude Code limits
+        if size_bytes > 50 * 1024:
+            logger.warning(
+                f"Large prompt detected: {size_bytes:,} bytes (~{int(approx_tokens):,} tokens). "
+                f"Agent may need to read file in chunks. Consider structuring prompt with clear sections "
+                f"and adding a table of contents at the top."
+            )
+            self.console.print_warning(
+                f"Large prompt: {size_bytes:,} bytes (~{int(approx_tokens):,} tokens). "
+                f"Agent will read in chunks using offset/limit."
+            )
+
+        # Strong warning at 100KB (~25K tokens) as this exceeds typical limits
+        if size_bytes > 100 * 1024:
+            logger.warning(
+                f"Very large prompt ({size_bytes:,} bytes) may cause agent read errors. "
+                f"Consider splitting into multiple files or using modular includes."
+            )
+            self.console.print_warning(
+                f"Very large prompt may cause read errors. Consider modularizing."
+            )
+
     def _initialize_adapters(self) -> Dict[str, ToolAdapter]:
         """Initialize available adapters."""
         adapters = {}
@@ -486,8 +560,37 @@ class RalphOrchestrator:
             # Create new event loop if needed
             return asyncio.run(self._aexecute_iteration())
     
+    def _ensure_infrastructure(self) -> None:
+        """Ensure critical directories exist at start of each iteration.
+
+        This is a defensive check in case agent code inadvertently deleted
+        the .agent/ directory during previous iterations.
+        """
+        critical_dirs = [
+            self.agent_dir,
+            self.agent_dir / "cache",
+            self.agent_dir / "metrics",
+            self.agent_dir / "logs",
+        ]
+
+        recreated = False
+        for dir_path in critical_dirs:
+            if not dir_path.exists():
+                dir_path.mkdir(parents=True, exist_ok=True)
+                logger.warning(f"Recreated missing infrastructure directory: {dir_path}")
+                recreated = True
+
+        if recreated:
+            logger.warning(
+                "Infrastructure directories were missing and have been recreated. "
+                "This may indicate agent code incorrectly deleted .agent/ directory."
+            )
+
     async def _aexecute_iteration(self) -> bool:
         """Execute a single iteration asynchronously."""
+        # Ensure infrastructure directories exist (defensive check)
+        self._ensure_infrastructure()
+
         # Get the current prompt
         prompt = self.context_manager.get_prompt()
         
@@ -1151,12 +1254,25 @@ Your output must be a **conversation with the user**, NOT a configuration file.
         # Combine prompt with project context
         full_prompt = f"{proposal_prompt}\n\n## Project Context\n{project_context}"
 
-        # Execute proposal phase - AI analyzes and proposes
-        response = await self.current_adapter.aexecute(
-            full_prompt,
-            prompt_file=str(self.prompt_file),
-            verbose=self.verbose
-        )
+        # Check if prompt file is very large - don't pass it directly
+        # Large prompts should be summarized in context instead
+        prompt_file_size = self.prompt_file.stat().st_size if self.prompt_file.exists() else 0
+        if prompt_file_size > 100 * 1024:  # > 100KB (~25K tokens)
+            logger.info(f"Large prompt file ({prompt_file_size:,} bytes), using context summary instead of direct file reference")
+            # For large prompts, include a summary in the prompt text and don't pass file
+            prompt_summary = self._get_prompt_summary()
+            full_prompt = f"{full_prompt}\n\n## Task Prompt Summary\n{prompt_summary}"
+            response = await self.current_adapter.aexecute(
+                full_prompt,
+                verbose=self.verbose
+            )
+        else:
+            # Execute proposal phase - AI analyzes and proposes
+            response = await self.current_adapter.aexecute(
+                full_prompt,
+                prompt_file=str(self.prompt_file),
+                verbose=self.verbose
+            )
 
         if response.success:
             # Store proposal for user review
@@ -1221,6 +1337,68 @@ Your output must be a **conversation with the user**, NOT a configuration file.
             context_parts.extend(found_indicators)
 
         return "\n".join(context_parts)
+
+    def _get_prompt_summary(self) -> str:
+        """Extract a summary from a large prompt file for validation proposal.
+
+        For prompts that are too large to pass directly, this extracts:
+        - Main headers (# and ## lines)
+        - Phase/Plan markers
+        - Status indicators (COMPLETED, IN_PROGRESS, etc.)
+        - First and last sections
+
+        Returns:
+            str: Summary of the prompt file (max ~10KB).
+        """
+        if not self.prompt_file.exists():
+            return "Prompt file not found."
+
+        try:
+            content = self.prompt_file.read_text()
+        except Exception as e:
+            return f"Error reading prompt: {e}"
+
+        lines = content.split('\n')
+        summary_parts = []
+
+        # Extract main headers
+        headers = [l for l in lines if l.startswith('#')][:50]  # First 50 headers
+        if headers:
+            summary_parts.append("**Main Sections:**")
+            summary_parts.extend(headers[:30])  # First 30 headers
+            if len(headers) > 30:
+                summary_parts.append(f"... and {len(headers) - 30} more sections")
+
+        # Count phases/plans
+        phases = [l for l in lines if 'PHASE' in l.upper() and l.strip().startswith('#')]
+        plans = [l for l in lines if 'Plan' in l and l.strip().startswith('#')]
+        if phases or plans:
+            summary_parts.append(f"\n**Structure:** {len(phases)} phases, {len(plans)} plans")
+
+        # Count status markers
+        completed = len([l for l in lines if 'COMPLETED' in l or '✅' in l])
+        in_progress = len([l for l in lines if 'IN_PROGRESS' in l or 'IN PROGRESS' in l])
+        not_started = len([l for l in lines if 'NOT_STARTED' in l or 'NOT STARTED' in l or 'NEEDS_VALIDATION' in l])
+        if completed or in_progress or not_started:
+            summary_parts.append(f"**Status:** {completed} completed, {in_progress} in progress, {not_started} pending")
+
+        # First 20 lines (intro)
+        summary_parts.append("\n**Prompt Beginning:**")
+        summary_parts.append("```")
+        summary_parts.extend(lines[:20])
+        summary_parts.append("```")
+
+        # File size info
+        file_size = self.prompt_file.stat().st_size
+        line_count = len(lines)
+        summary_parts.append(f"\n**File Info:** {file_size:,} bytes, {line_count:,} lines")
+
+        # Truncate if still too long (max ~8KB summary)
+        summary = '\n'.join(summary_parts)
+        if len(summary) > 8000:
+            summary = summary[:8000] + "\n... [summary truncated]"
+
+        return summary
 
     async def _get_user_confirmation(self) -> bool:
         """Present proposal and get user confirmation.

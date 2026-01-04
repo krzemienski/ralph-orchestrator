@@ -264,6 +264,99 @@ class TestRalphOrchestrator(unittest.TestCase):
     # Task completion detection has been removed - orchestrator runs until limits
 
 
+class TestInfrastructureResilience(unittest.TestCase):
+    """Test infrastructure resilience when directories are deleted mid-run."""
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    def test_ensure_infrastructure_recreates_deleted_dirs(self, mock_gemini, mock_qchat, mock_claude):
+        """Test that _ensure_infrastructure recreates missing directories.
+
+        This guards against agents accidentally deleting .agent/ directory.
+        """
+        import shutil
+
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            prompt_file = tmpdir / "PROMPT.md"
+            prompt_file.write_text("# Test")
+            agent_dir = tmpdir / ".agent"
+
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=str(prompt_file),
+                primary_tool="claude",
+                max_iterations=10
+            )
+            # Override agent_dir to use temp directory
+            orchestrator.agent_dir = agent_dir
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            (agent_dir / "cache").mkdir()
+            (agent_dir / "metrics").mkdir()
+            (agent_dir / "logs").mkdir()
+
+            # Verify directories exist
+            self.assertTrue(agent_dir.exists())
+            self.assertTrue((agent_dir / "cache").exists())
+
+            # Simulate agent deleting .agent/
+            shutil.rmtree(agent_dir)
+            self.assertFalse(agent_dir.exists())
+
+            # Call _ensure_infrastructure
+            orchestrator._ensure_infrastructure()
+
+            # Directories should be recreated
+            self.assertTrue(agent_dir.exists())
+            self.assertTrue((agent_dir / "cache").exists())
+            self.assertTrue((agent_dir / "metrics").exists())
+            self.assertTrue((agent_dir / "logs").exists())
+
+    @patch('ralph_orchestrator.orchestrator.ClaudeAdapter')
+    @patch('ralph_orchestrator.orchestrator.QChatAdapter')
+    @patch('ralph_orchestrator.orchestrator.GeminiAdapter')
+    def test_ensure_infrastructure_handles_partial_deletion(self, mock_gemini, mock_qchat, mock_claude):
+        """Test recovery from partial directory deletion."""
+        import shutil
+
+        mock_claude_instance = MagicMock()
+        mock_claude_instance.available = True
+        mock_claude.return_value = mock_claude_instance
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            prompt_file = tmpdir / "PROMPT.md"
+            prompt_file.write_text("# Test")
+            agent_dir = tmpdir / ".agent"
+
+            orchestrator = RalphOrchestrator(
+                prompt_file_or_config=str(prompt_file),
+                primary_tool="claude",
+                max_iterations=10
+            )
+            orchestrator.agent_dir = agent_dir
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            (agent_dir / "cache").mkdir()
+            (agent_dir / "metrics").mkdir()
+            (agent_dir / "logs").mkdir()
+
+            # Delete only cache subdir
+            shutil.rmtree(agent_dir / "cache")
+            self.assertTrue(agent_dir.exists())
+            self.assertFalse((agent_dir / "cache").exists())
+
+            orchestrator._ensure_infrastructure()
+
+            # Cache should be recreated, metrics and logs should still exist
+            self.assertTrue((agent_dir / "cache").exists())
+            self.assertTrue((agent_dir / "metrics").exists())
+            self.assertTrue((agent_dir / "logs").exists())
+
+
 class TestIterationTelemetry(unittest.TestCase):
     """Test per-iteration telemetry capture in orchestrator."""
 

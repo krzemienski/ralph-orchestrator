@@ -379,7 +379,11 @@ class WebMonitor:
             """Serve the login page."""
             html_file = Path(__file__).parent / "static" / "login.html"
             if html_file.exists():
-                return FileResponse(html_file, media_type="text/html")
+                return FileResponse(
+                    html_file,
+                    media_type="text/html",
+                    headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+                )
             else:
                 return HTMLResponse(content="<h1>Login page not found</h1>", status_code=404)
         
@@ -388,7 +392,11 @@ class WebMonitor:
             """Serve the main dashboard."""
             html_file = Path(__file__).parent / "static" / "index.html"
             if html_file.exists():
-                return FileResponse(html_file, media_type="text/html")
+                return FileResponse(
+                    html_file,
+                    media_type="text/html",
+                    headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+                )
             else:
                 # Return a basic HTML page if static file doesn't exist yet
                 return HTMLResponse(content="""
