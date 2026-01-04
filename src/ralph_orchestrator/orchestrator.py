@@ -778,6 +778,43 @@ class RalphOrchestrator:
                 self.current_task = None
                 self.task_start_time = None
 
+    def _check_validation_evidence(self) -> tuple[bool, str]:
+        """Check if validation evidence files exist.
+
+        When validation is enabled, this checks for evidence files in
+        validation-evidence/ directory. Prevents false completion when
+        only unit tests were run without functional validation.
+
+        Returns:
+            Tuple of (has_evidence, message) - True if evidence exists or
+            validation is disabled, False if evidence is missing.
+        """
+        if not self.enable_validation:
+            return True, "Validation disabled, skipping evidence check"
+
+        evidence_dir = self.prompt_file.parent / "validation-evidence"
+        if not evidence_dir.exists():
+            return False, "validation-evidence/ directory not found"
+
+        # Count evidence files
+        png_files = list(evidence_dir.rglob("*.png"))
+        txt_files = list(evidence_dir.rglob("*.txt"))
+        json_files = list(evidence_dir.rglob("*.json"))
+
+        total_evidence = len(png_files) + len(txt_files) + len(json_files)
+
+        if total_evidence == 0:
+            return False, "No evidence files found in validation-evidence/ (need screenshots, output captures)"
+
+        # Check for minimum evidence (at least 3 files across types)
+        if total_evidence < 3:
+            return False, f"Insufficient evidence: only {total_evidence} files found (need at least 3)"
+
+        # Log what was found
+        logger.info(f"Validation evidence found: {len(png_files)} screenshots, {len(txt_files)} outputs, {len(json_files)} API responses")
+
+        return True, f"Evidence found: {total_evidence} files"
+
     def _check_completion_marker(self) -> bool:
         """Check if prompt contains TASK_COMPLETE marker.
 
@@ -791,35 +828,44 @@ class RalphOrchestrator:
         Avoids false positives from mid-sentence mentions like
         "Remember to mark TASK_COMPLETE when done."
 
+        Also validates that evidence files exist when validation is enabled.
+
         Returns:
-            True if completion marker found, False otherwise.
+            True if completion marker found AND evidence exists (if validation enabled),
+            False otherwise.
         """
         if not self.prompt_file.exists():
             return False
 
         try:
             content = self.prompt_file.read_text()
+            marker_found = False
+
             for line in content.split('\n'):
                 line_stripped = line.strip()
 
                 # Checkbox formats (original)
                 if line_stripped in ('- [x] TASK_COMPLETE', '[x] TASK_COMPLETE'):
-                    return True
+                    marker_found = True
+                    break
 
                 # Bold markdown: **TASK_COMPLETE** (with optional trailing text)
                 if line_stripped.startswith('**TASK_COMPLETE**'):
-                    return True
+                    marker_found = True
+                    break
 
                 # Standalone at line start (exactly TASK_COMPLETE or TASK_COMPLETE -)
                 if line_stripped == 'TASK_COMPLETE':
-                    return True
+                    marker_found = True
+                    break
                 if line_stripped.startswith('TASK_COMPLETE '):
                     # Only if it's a completion signal, not a sentence fragment
                     # Allow: "TASK_COMPLETE - description"
                     # Reject: "TASK_COMPLETE when all items are done"
                     rest = line_stripped[len('TASK_COMPLETE '):]
                     if rest.startswith('-') or rest.startswith(':'):
-                        return True
+                        marker_found = True
+                        break
 
                 # Colon format: "Status: TASK_COMPLETE" or "**Status**: TASK_COMPLETE"
                 if ': TASK_COMPLETE' in line_stripped:
@@ -827,9 +873,28 @@ class RalphOrchestrator:
                     idx = line_stripped.find(': TASK_COMPLETE')
                     after_marker = line_stripped[idx + len(': TASK_COMPLETE'):]
                     if after_marker == '' or after_marker[0] in ' \t.,;':
-                        return True
+                        marker_found = True
+                        break
 
-            return False
+            if not marker_found:
+                return False
+
+            # If marker found and validation enabled, check for evidence
+            if self.enable_validation:
+                has_evidence, message = self._check_validation_evidence()
+                if not has_evidence:
+                    logger.warning(f"TASK_COMPLETE marker found but validation evidence missing: {message}")
+                    self.console.print_warning(
+                        f"Cannot complete: {message}\n"
+                        "Functional validation requires evidence files (screenshots, curl output).\n"
+                        "Unit tests (npm test, pytest) are NOT sufficient."
+                    )
+                    return False
+                else:
+                    logger.info(f"Completion validated: {message}")
+
+            return True
+
         except Exception as e:
             logger.warning(f"Error checking completion marker: {e}")
             return False
