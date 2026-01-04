@@ -704,12 +704,19 @@ Python 3.10+
 - Total onboarding tests: 54 (13 SettingsLoader + 21 ProjectScanner + 20 AgentAnalyzer)
 - Commit: `bfa732a`
 
-### Phase 4: Static Analysis Fallback (Priority: MEDIUM)
-- [ ] Implement `HistoryAnalyzer` class (JSONL parsing)
-- [ ] Parse JSONL conversation format directly
-- [ ] Extract tool usage statistics
-- [ ] Identify tool chains and sequences
-- [ ] Works offline without API calls
+### Phase 4: Static Analysis Fallback (Priority: MEDIUM) ✅ COMPLETE
+- [x] Implement `HistoryAnalyzer` class (JSONL parsing)
+- [x] Parse JSONL conversation format directly
+- [x] Extract tool usage statistics
+- [x] Identify tool chains and sequences
+- [x] Works offline without API calls
+
+**Completed**: Iteration 4 (Jan 3, 2026)
+- Created `src/ralph_orchestrator/onboarding/history_analyzer.py`
+- Data models: `ToolUsageStats`, `MCPServerStats`, `ToolChain`, `Conversation`
+- 22 tests in `tests/test_onboarding_history_analyzer.py` - all passing
+- Total onboarding tests: 76 (13 SettingsLoader + 21 ProjectScanner + 20 AgentAnalyzer + 22 HistoryAnalyzer)
+- Commit: `e8e57d5`
 
 ### Phase 5: Pattern Extraction (Priority: MEDIUM)
 - [ ] Implement `PatternExtractor` class

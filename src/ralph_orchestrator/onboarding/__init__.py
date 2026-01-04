@@ -12,6 +12,11 @@ from ralph_orchestrator.onboarding.history_analyzer import (
     ToolChain,
     ToolUsageStats,
 )
+from ralph_orchestrator.onboarding.pattern_extractor import (
+    PatternExtractor,
+    ProjectPatterns,
+    Workflow,
+)
 from ralph_orchestrator.onboarding.scanner import ProjectScanner, ProjectType
 from ralph_orchestrator.onboarding.settings_loader import SettingsLoader
 
@@ -21,9 +26,12 @@ __all__ = [
     "Conversation",
     "HistoryAnalyzer",
     "MCPServerStats",
+    "PatternExtractor",
+    "ProjectPatterns",
     "ProjectScanner",
     "ProjectType",
     "SettingsLoader",
     "ToolChain",
     "ToolUsageStats",
+    "Workflow",
 ]
