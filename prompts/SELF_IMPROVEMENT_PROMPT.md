@@ -121,14 +121,16 @@ Phase 00 (TUI) ──► Phase 01 (Isolation) ──► Phase 02 (Daemon)
 
 ---
 
-#### Phase 05: Mobile Dashboard ⏳ PENDING
+#### Phase 05: Mobile Dashboard ⏳ IN PROGRESS
 
-| Plan | Acceptance Criteria | Tests |
-|------|---------------------|-------|
-| 05-01 | OrchestratorCard list view | ~10 |
-| 05-02 | Detail view with tasks and logs | ~10 |
-| 05-03 | WebSocket real-time updates | ~8 |
-| 05-04 | MetricsChart with 60s rolling window | ~7 |
+| Plan | Acceptance Criteria | Tests | Status |
+|------|---------------------|-------|--------|
+| 05-01 | OrchestratorCard list view | 20 | ✅ DONE |
+| 05-02 | Detail view with tasks and logs | ~10 | ⏳ PENDING |
+| 05-03 | WebSocket real-time updates | ~8 | ⏳ PENDING |
+| 05-04 | MetricsChart with 60s rolling window | ~7 | ⏳ PENDING |
+
+**Status**: 62 tests passing (42 Phase 04 + 20 Phase 05-01)
 
 **Validation Gate**: Dashboard displays live orchestrators
 
