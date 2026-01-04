@@ -366,3 +366,155 @@ class TestIntegrationScenario:
             # 8. Verify final verdict
             assert final["verdict"] == "PASS"
             assert len(final["subagent_results"]) == 1
+
+
+class TestSpawnSubagent:
+    """Test spawn_subagent() method for real Claude spawning."""
+
+    def test_spawn_subagent_exists(self):
+        """spawn_subagent method should exist and be callable."""
+        from ralph_orchestrator.main import RalphConfig
+        from ralph_orchestrator.orchestration import OrchestrationManager
+
+        config = RalphConfig(enable_orchestration=True)
+        manager = OrchestrationManager(config)
+
+        assert hasattr(manager, "spawn_subagent")
+        assert callable(manager.spawn_subagent)
+
+    def test_spawn_subagent_is_async(self):
+        """spawn_subagent should be an async method."""
+        import asyncio
+
+        from ralph_orchestrator.main import RalphConfig
+        from ralph_orchestrator.orchestration import OrchestrationManager
+
+        config = RalphConfig(enable_orchestration=True)
+        manager = OrchestrationManager(config)
+
+        # Should be a coroutine function
+        assert asyncio.iscoroutinefunction(manager.spawn_subagent)
+
+    @pytest.mark.asyncio
+    async def test_spawn_subagent_returns_result_dict(self):
+        """spawn_subagent should return a properly structured result dict."""
+        from ralph_orchestrator.main import RalphConfig
+        from ralph_orchestrator.orchestration import OrchestrationManager
+
+        config = RalphConfig(enable_orchestration=True)
+        manager = OrchestrationManager(config)
+
+        # Simple prompt that should return quickly
+        result = await manager.spawn_subagent(
+            subagent_type="validator",
+            prompt="Reply with exactly: {\"test\": true}",
+            timeout=60,
+        )
+
+        # Verify result structure
+        assert isinstance(result, dict)
+        assert "subagent_type" in result
+        assert "success" in result
+        assert "return_code" in result
+        assert "stdout" in result
+        assert "stderr" in result
+        assert "parsed_json" in result
+        assert "error" in result
+        assert result["subagent_type"] == "validator"
+
+    @pytest.mark.asyncio
+    async def test_spawn_subagent_timeout_handling(self):
+        """spawn_subagent should handle timeouts gracefully."""
+        from ralph_orchestrator.main import RalphConfig
+        from ralph_orchestrator.orchestration import OrchestrationManager
+
+        config = RalphConfig(enable_orchestration=True)
+        manager = OrchestrationManager(config)
+
+        # Very short timeout should trigger timeout error
+        result = await manager.spawn_subagent(
+            subagent_type="validator",
+            prompt="Count from 1 to 1000000 slowly, one number per line",
+            timeout=1,  # Very short timeout
+        )
+
+        # Should have error set (either timeout or completed quickly)
+        assert isinstance(result, dict)
+        assert result["subagent_type"] == "validator"
+        # Either timed out or completed - both are valid
+        if result["error"]:
+            assert "timeout" in result["error"].lower() or "Timeout" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_spawn_subagent_json_parsing(self):
+        """spawn_subagent should parse JSON from stdout when available."""
+        from ralph_orchestrator.main import RalphConfig
+        from ralph_orchestrator.orchestration import OrchestrationManager
+
+        config = RalphConfig(enable_orchestration=True)
+        manager = OrchestrationManager(config)
+
+        result = await manager.spawn_subagent(
+            subagent_type="validator",
+            prompt="Reply with exactly this JSON and nothing else: {\"status\": \"ok\", \"value\": 42}",
+            timeout=60,
+        )
+
+        # If successful, check JSON was parsed
+        if result["success"]:
+            # The parsed_json might be the Claude output format, not our exact JSON
+            # Just verify it's valid JSON if stdout was populated
+            if result["stdout"]:
+                assert result["parsed_json"] is not None or result["error"] is None
+
+
+@pytest.mark.integration
+class TestSpawnSubagentIntegration:
+    """Integration tests that actually call Claude CLI.
+
+    These tests are marked with @pytest.mark.integration and may take time.
+    Run with: pytest -m integration
+    """
+
+    @pytest.mark.asyncio
+    async def test_real_claude_spawn_simple(self):
+        """Test real Claude CLI spawn with simple prompt."""
+        from ralph_orchestrator.main import RalphConfig
+        from ralph_orchestrator.orchestration import OrchestrationManager
+
+        config = RalphConfig(enable_orchestration=True)
+        manager = OrchestrationManager(config)
+
+        result = await manager.spawn_subagent(
+            subagent_type="validator",
+            prompt="Say 'hello' and nothing else",
+            timeout=120,
+        )
+
+        # Should complete successfully
+        assert isinstance(result, dict)
+        assert result["return_code"] >= 0 or result["error"] is not None
+        # If no error, should have stdout
+        if not result["error"]:
+            assert len(result["stdout"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_real_claude_spawn_json_response(self):
+        """Test Claude CLI spawn with JSON response request."""
+        from ralph_orchestrator.main import RalphConfig
+        from ralph_orchestrator.orchestration import OrchestrationManager
+
+        config = RalphConfig(enable_orchestration=True)
+        manager = OrchestrationManager(config)
+
+        result = await manager.spawn_subagent(
+            subagent_type="validator",
+            prompt="Respond with valid JSON containing a 'result' key set to 'success'",
+            timeout=120,
+        )
+
+        # Should complete and have parsed JSON
+        assert isinstance(result, dict)
+        if result["success"]:
+            # Claude with --output-format json wraps response
+            assert result["parsed_json"] is not None

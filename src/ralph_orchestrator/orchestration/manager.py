@@ -2,8 +2,13 @@
 # ABOUTME: OrchestrationManager for subagent coordination and prompt generation
 # ABOUTME: Implements Phase O5 - Integration & Subagent Spawning
 
+import asyncio
+import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 from .config import SUBAGENT_PROFILES
 from .coordinator import CoordinationManager
@@ -233,3 +238,87 @@ class OrchestrationManager:
             "subagent_results": results,
             "summary": summary,
         }
+
+    async def spawn_subagent(
+        self,
+        subagent_type: str,
+        prompt: str,
+        timeout: int = 300,
+    ) -> Dict[str, Any]:
+        """Spawn Claude subagent and collect results.
+
+        Uses asyncio.create_subprocess_exec to run the Claude CLI with the
+        given prompt and collect its output.
+
+        Args:
+            subagent_type: Type of subagent (validator, researcher, implementer, analyst)
+            prompt: The prompt to send to Claude
+            timeout: Timeout in seconds (default 300)
+
+        Returns:
+            Dict with result including:
+            - subagent_type: The type of subagent spawned
+            - success: Whether the subprocess completed successfully
+            - return_code: Exit code from the subprocess
+            - stdout: Raw stdout from the subprocess
+            - stderr: Raw stderr from the subprocess
+            - parsed_json: Parsed JSON from stdout if available
+            - error: Error message if any error occurred
+        """
+        logger.info(f"Spawning {subagent_type} subagent with timeout={timeout}s")
+
+        result: Dict[str, Any] = {
+            "subagent_type": subagent_type,
+            "success": False,
+            "return_code": -1,
+            "stdout": "",
+            "stderr": "",
+            "parsed_json": None,
+            "error": None,
+        }
+
+        try:
+            # Create subprocess to run claude CLI
+            proc = await asyncio.create_subprocess_exec(
+                "claude",
+                "-p",
+                prompt,
+                "--output-format",
+                "json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            # Wait for completion with timeout
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=timeout,
+            )
+
+            result["stdout"] = stdout_bytes.decode("utf-8") if stdout_bytes else ""
+            result["stderr"] = stderr_bytes.decode("utf-8") if stderr_bytes else ""
+            result["return_code"] = proc.returncode if proc.returncode is not None else 0
+
+            # Try to parse JSON from stdout
+            if result["stdout"]:
+                try:
+                    result["parsed_json"] = json.loads(result["stdout"])
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse JSON from stdout: {e}")
+
+            result["success"] = result["return_code"] == 0
+            logger.info(
+                f"Subagent {subagent_type} completed with return_code={result['return_code']}"
+            )
+
+        except asyncio.TimeoutError:
+            result["error"] = f"Timeout after {timeout} seconds"
+            logger.error(f"Subagent {subagent_type} timed out after {timeout}s")
+        except FileNotFoundError:
+            result["error"] = "Claude CLI not found in PATH"
+            logger.error("Claude CLI not found - ensure 'claude' is installed and in PATH")
+        except Exception as e:
+            result["error"] = str(e)
+            logger.error(f"Error spawning subagent {subagent_type}: {e}")
+
+        return result
