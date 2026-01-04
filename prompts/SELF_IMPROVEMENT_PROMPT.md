@@ -66,7 +66,7 @@ Phase 00 (TUI) ──► Phase 01 (Isolation) ──► Phase 02 (Daemon)
 | Plan | Acceptance Criteria | Tests | Status |
 |------|---------------------|-------|--------|
 | 01-01 | InstanceManager with CRUD, state dirs | 17 | ✅ DONE |
-| 01-02 | Per-instance .agent-{id}/ directories | ~8 | ⏳ |
+| 01-02 | Per-instance .agent-{id}/ directories | 8 | ✅ DONE |
 | 01-03 | Dynamic port allocation (8080-8180) | ~6 | ⏳ |
 | 01-04 | Instance-aware git branches (ralph-{id}) | ~6 | ⏳ |
 
