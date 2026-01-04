@@ -47,7 +47,7 @@ env/
 # Keep prompts tracked, but ignore archive and logs within
 prompts/archive/
 prompts/.logs/
-prompts/*/validation-evidence/  # Ignore per-prompt validation evidence (generated)
+# NOTE: validation-evidence/ is NOT ignored - it's needed for git checkpoints and recovery
 ralph_*.log
 ralph_metrics_*.json
 docs-plans-prompts-specs/
