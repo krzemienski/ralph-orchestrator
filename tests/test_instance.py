@@ -255,3 +255,112 @@ class TestDynamicPortAllocation:
             used = mgr.get_used_ports()
             assert 8080 in used
             assert 8085 in used
+
+
+class TestInstanceAwareGitBranching:
+    """Test instance-aware git branching for isolated checkpoints."""
+
+    def test_get_branch_name_returns_instance_specific_branch(self):
+        """get_branch_name returns ralph-{instance_id} format."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+            info = mgr.create_instance("prompt.md")
+            branch_name = mgr.get_branch_name(info.id)
+            assert branch_name == f"ralph-{info.id}"
+
+    def test_get_branch_name_for_nonexistent_instance_returns_none(self):
+        """get_branch_name returns None for non-existent instance."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+            result = mgr.get_branch_name("nonexistent")
+            assert result is None
+
+    def test_create_branch_creates_git_branch(self):
+        """create_branch creates a new git branch for instance."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+            info = mgr.create_instance("prompt.md")
+
+            # Initialize a git repo in a subdirectory for testing
+            repo_dir = Path(tmpdir) / "repo"
+            repo_dir.mkdir()
+            os.system(f"cd {repo_dir} && git init --quiet && git commit --allow-empty -m 'init' --quiet")
+
+            result = mgr.create_branch(info.id, repo_dir)
+            assert result is True
+
+            # Verify branch exists
+            import subprocess
+            branches = subprocess.check_output(
+                ["git", "branch", "--list", f"ralph-{info.id}"],
+                cwd=repo_dir
+            ).decode().strip()
+            assert f"ralph-{info.id}" in branches
+
+    def test_create_branch_returns_false_for_nonexistent_instance(self):
+        """create_branch returns False for non-existent instance."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+            result = mgr.create_branch("nonexistent", Path(tmpdir))
+            assert result is False
+
+    def test_cleanup_branch_removes_git_branch(self):
+        """cleanup_branch removes instance's git branch."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+            info = mgr.create_instance("prompt.md")
+
+            # Initialize a git repo
+            repo_dir = Path(tmpdir) / "repo"
+            repo_dir.mkdir()
+            os.system(f"cd {repo_dir} && git init --quiet && git commit --allow-empty -m 'init' --quiet")
+
+            # Create branch first
+            mgr.create_branch(info.id, repo_dir)
+
+            # Now cleanup
+            result = mgr.cleanup_branch(info.id, repo_dir)
+            assert result is True
+
+            # Verify branch is gone
+            import subprocess
+            branches = subprocess.check_output(
+                ["git", "branch", "--list", f"ralph-{info.id}"],
+                cwd=repo_dir
+            ).decode().strip()
+            assert branches == ""
+
+    def test_cleanup_branch_returns_false_when_branch_not_exists(self):
+        """cleanup_branch returns False when branch doesn't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+            info = mgr.create_instance("prompt.md")
+
+            # Initialize a git repo without creating the branch
+            repo_dir = Path(tmpdir) / "repo"
+            repo_dir.mkdir()
+            os.system(f"cd {repo_dir} && git init --quiet && git commit --allow-empty -m 'init' --quiet")
+
+            result = mgr.cleanup_branch(info.id, repo_dir)
+            assert result is False
+
+    def test_list_instance_branches_returns_all_ralph_branches(self):
+        """list_instance_branches returns all ralph-* branches."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = InstanceManager(Path(tmpdir))
+
+            # Initialize a git repo
+            repo_dir = Path(tmpdir) / "repo"
+            repo_dir.mkdir()
+            os.system(f"cd {repo_dir} && git init --quiet && git commit --allow-empty -m 'init' --quiet")
+
+            # Create multiple instance branches
+            i1 = mgr.create_instance("p1.md")
+            i2 = mgr.create_instance("p2.md")
+            mgr.create_branch(i1.id, repo_dir)
+            mgr.create_branch(i2.id, repo_dir)
+
+            branches = mgr.list_instance_branches(repo_dir)
+            assert f"ralph-{i1.id}" in branches
+            assert f"ralph-{i2.id}" in branches
+            assert len(branches) == 2

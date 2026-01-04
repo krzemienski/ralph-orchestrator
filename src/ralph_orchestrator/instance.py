@@ -5,6 +5,7 @@ import uuid
 import json
 import os
 import socket
+import subprocess
 import time
 from pathlib import Path
 from dataclasses import dataclass, asdict, field
@@ -238,3 +239,96 @@ class InstanceManager:
         port = self.find_available_port()
         self.update_port(instance_id, port)
         return port
+
+    # Instance-aware git branching methods
+
+    def get_branch_name(self, instance_id: str) -> Optional[str]:
+        """Get git branch name for instance.
+
+        Args:
+            instance_id: ID of instance
+
+        Returns:
+            Branch name in format ralph-{instance_id}, or None if instance not found
+        """
+        info = self.get_instance(instance_id)
+        if info is None:
+            return None
+        return f"ralph-{instance_id}"
+
+    def create_branch(self, instance_id: str, repo_dir: Path) -> bool:
+        """Create a git branch for instance.
+
+        Args:
+            instance_id: ID of instance
+            repo_dir: Path to git repository
+
+        Returns:
+            True if branch created, False if instance not found or error
+        """
+        branch_name = self.get_branch_name(instance_id)
+        if branch_name is None:
+            return False
+
+        try:
+            subprocess.run(
+                ["git", "branch", branch_name],
+                cwd=repo_dir,
+                check=True,
+                capture_output=True,
+            )
+            return True
+        except subprocess.CalledProcessError:
+            return False
+
+    def cleanup_branch(self, instance_id: str, repo_dir: Path) -> bool:
+        """Remove git branch for instance.
+
+        Args:
+            instance_id: ID of instance
+            repo_dir: Path to git repository
+
+        Returns:
+            True if branch deleted, False if branch not found or error
+        """
+        branch_name = self.get_branch_name(instance_id)
+        if branch_name is None:
+            return False
+
+        try:
+            # -D force deletes even unmerged branches
+            subprocess.run(
+                ["git", "branch", "-D", branch_name],
+                cwd=repo_dir,
+                check=True,
+                capture_output=True,
+            )
+            return True
+        except subprocess.CalledProcessError:
+            return False
+
+    def list_instance_branches(self, repo_dir: Path) -> List[str]:
+        """List all ralph instance branches in repository.
+
+        Args:
+            repo_dir: Path to git repository
+
+        Returns:
+            List of branch names matching ralph-* pattern
+        """
+        try:
+            result = subprocess.run(
+                ["git", "branch", "--list", "ralph-*"],
+                cwd=repo_dir,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            branches = []
+            for line in result.stdout.strip().split("\n"):
+                branch = line.strip().lstrip("* ")
+                if branch:
+                    branches.append(branch)
+            return branches
+        except subprocess.CalledProcessError:
+            return []
