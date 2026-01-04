@@ -50,7 +50,7 @@ All validation uses:
 ### Global Success Criteria
 
 - [x] All 6 phases show `| ✅ VALIDATED` status
-- [x] All unit tests pass (`uv run pytest tests/test_orchestration*.py tests/test_run_manager.py tests/test_discovery.py tests/test_coordinator.py -v`) - 127 tests pass
+- [x] All unit tests pass (`uv run pytest tests/test_orchestration*.py tests/test_run_manager.py tests/test_discovery.py tests/test_coordinator.py -v`) - 105 tests pass
 - [x] Orchestration package exists with all modules
 - [x] Integration test demonstrates subagent prompt generation
 - [x] Evidence files exist for all phases (12+ files total)
@@ -239,10 +239,10 @@ Define specialized subagent types with specific capabilities:
 
 ### Acceptance Criteria
 
-- [ ] SubagentProfile dataclass exists in src/ralph_orchestrator/orchestration/config.py
-- [ ] Default profiles for all 4 subagent types defined
-- [ ] Each profile specifies: name, description, required_tools, required_mcps, optional_mcps, prompt_template
-- [ ] Unit tests pass for profile creation and validation
+- [x] SubagentProfile dataclass exists in src/ralph_orchestrator/orchestration/config.py
+- [x] Default profiles for all 4 subagent types defined
+- [x] Each profile specifies: name, description, required_tools, required_mcps, optional_mcps, prompt_template
+- [x] Unit tests pass for profile creation and validation
 
 ### Validation Gate
 
@@ -508,7 +508,7 @@ All 6 phases of the orchestration architecture improvement have been validated:
 | O4 | Coordination Protocol | ✅ VALIDATED | 22 tests |
 | O5 | Integration & Subagent Spawning | ✅ VALIDATED | 22 tests |
 
-**Total: 127 tests passing** (105 orchestration + 22 integration)
+**Total: 105 tests passing** (18 run manager + 12 config + 31 discovery + 22 coordinator + 22 integration)
 
 The orchestration package is complete with:
 - `OrchestrationManager` - Main class for subagent orchestration
@@ -533,7 +533,7 @@ The orchestration package is complete with:
   - generate_subagent_prompt() creates prompt with skills/MCPs
   - aggregate_results() combines subagent outputs with verdict logic
 - Evidence captured in `validation-evidence/orchestration-05/`
-- All 127 orchestration tests pass
+- All 105 orchestration tests pass
 
 **All 6 phases (O0-O5) are now VALIDATED!**
 
