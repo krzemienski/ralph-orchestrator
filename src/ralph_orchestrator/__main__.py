@@ -392,6 +392,213 @@ IMPORTANT:
 
 
 
+def cmd_onboard(args):
+    """Onboard an existing Claude Code project to RALPH."""
+    from pathlib import Path as Pth
+
+    # Import onboarding modules
+    from .onboarding import (
+        AgentAnalyzer,
+        AnalysisResult,
+        ConfigGenerator,
+        HistoryAnalyzer,
+        PatternExtractor,
+        ProjectScanner,
+        SettingsLoader,
+    )
+
+    project_path = Pth(args.project_path).resolve()
+
+    if not project_path.exists():
+        _console.print_error(f"Project path does not exist: {project_path}")
+        sys.exit(1)
+
+    if not project_path.is_dir():
+        _console.print_error(f"Project path is not a directory: {project_path}")
+        sys.exit(1)
+
+    _console.print_header("RALPH Onboarding")
+    _console.print_status(f"Scanning project: {project_path}")
+
+    # Step 1: Load settings
+    inherit_settings = not args.no_inherit
+    settings = SettingsLoader(project_path)
+
+    if inherit_settings:
+        _console.print_info("Inheriting user settings from ~/.claude/settings.json")
+
+    # Step 2: Scan project
+    scanner = ProjectScanner(project_path, settings)
+    project_type = scanner.detect_project_type()
+    _console.print_success(f"Detected project type: {project_type.value}")
+
+    # Check for Claude history
+    history_files = scanner.find_claude_history()
+    if history_files:
+        _console.print_success(f"Found {len(history_files)} conversation file(s) in Claude history")
+    else:
+        _console.print_warning("No Claude Code conversation history found")
+
+    # Check for MCP config
+    mcp_servers = settings.get_mcp_servers()
+    if mcp_servers:
+        _console.print_success(f"Found {len(mcp_servers)} MCP server(s) configured")
+
+    # Check for CLAUDE.md
+    claude_md_files = scanner.find_claude_md_files()
+    if claude_md_files:
+        _console.print_success(f"Found {len(claude_md_files)} CLAUDE.md file(s)")
+
+    # Step 3: Analyze (agent or static mode)
+    analysis_result = None
+
+    if args.static:
+        _console.print_status("Using static analysis (parsing JSONL files directly)...")
+        if history_files:
+            history_analyzer = HistoryAnalyzer(history_files)
+            tool_usage = history_analyzer.extract_tool_usage()
+            mcp_usage = history_analyzer.extract_mcp_usage()
+            tool_chains = history_analyzer.extract_tool_chains()
+
+            _console.print_info(f"Parsed {len(tool_usage)} unique tools")
+            _console.print_info(f"Found {len(mcp_usage)} MCP server(s) used in history")
+            _console.print_info(f"Identified {len(tool_chains)} tool chains")
+
+            # Create AnalysisResult from static analysis
+            common_tools = {name: stats.success_rate for name, stats in tool_usage.items()}
+            workflows = [[t for t in chain.tools] for chain in tool_chains[:10]]
+
+            analysis_result = AnalysisResult(
+                project_type=project_type.value,
+                frameworks=[],  # Can't detect from static analysis
+                common_tools=common_tools,
+                workflows=workflows,
+                recommended_config={
+                    "max_iterations": 50,
+                    "max_tokens": 500000,
+                }
+            )
+        else:
+            _console.print_warning("No history files to analyze, using defaults")
+            analysis_result = AnalysisResult(project_type=project_type.value)
+    else:
+        # Agent-assisted analysis
+        _console.print_status("Using agent-assisted analysis...")
+
+        if args.use_memory and settings.has_memory_plugin():
+            _console.print_info("Using episodic memory for deeper analysis")
+        elif args.use_memory and not settings.has_memory_plugin():
+            _console.print_warning("--use-memory requested but no memory plugin found")
+
+        agent_analyzer = AgentAnalyzer(
+            project_path,
+            settings=settings,
+            inherit_user_settings=inherit_settings,
+        )
+
+        try:
+            analysis_result = agent_analyzer.sync_analyze()
+            if analysis_result and analysis_result.project_type != "unknown":
+                _console.print_success("Agent analysis completed successfully")
+            else:
+                _console.print_warning("Agent analysis returned limited results, supplementing with static analysis")
+                # Fallback to static if agent returns minimal data
+                if history_files:
+                    history_analyzer = HistoryAnalyzer(history_files)
+                    tool_usage = history_analyzer.extract_tool_usage()
+                    analysis_result.common_tools = {
+                        name: stats.success_rate for name, stats in tool_usage.items()
+                    }
+        except Exception as e:
+            _console.print_warning(f"Agent analysis failed: {e}")
+            _console.print_info("Falling back to static analysis...")
+
+            if history_files:
+                history_analyzer = HistoryAnalyzer(history_files)
+                tool_usage = history_analyzer.extract_tool_usage()
+                analysis_result = AnalysisResult(
+                    project_type=project_type.value,
+                    common_tools={name: stats.success_rate for name, stats in tool_usage.items()},
+                )
+            else:
+                analysis_result = AnalysisResult(project_type=project_type.value)
+
+    # Step 4: Extract patterns
+    _console.print_status("Extracting patterns from analysis...")
+
+    # Create history analyzer for pattern extraction if available
+    history_analyzer = None
+    if history_files:
+        history_analyzer = HistoryAnalyzer(history_files)
+
+    pattern_extractor = PatternExtractor(
+        history=history_analyzer,
+        analysis_result=analysis_result,
+    )
+
+    patterns = pattern_extractor.identify_project_patterns()
+
+    if patterns.workflows:
+        _console.print_info(f"Found {len(patterns.workflows)} workflow patterns")
+    if patterns.successful_tools:
+        _console.print_info(f"Top tools: {', '.join(patterns.successful_tools[:5])}")
+
+    # Step 5: Generate config
+    _console.print_status("Generating configuration files...")
+
+    config_generator = ConfigGenerator(
+        scanner=scanner,
+        extractor=pattern_extractor,
+        settings=settings,
+    )
+
+    output_dir = Pth(args.output_dir) if args.output_dir else project_path
+
+    if args.analyze_only:
+        # Just show what would be generated
+        _console.print_header("Analysis Results (--analyze-only)")
+
+        _console.print_info("ralph.yml preview:")
+        _console.print_separator()
+        print(config_generator.generate_ralph_yml())
+        _console.print_separator()
+
+        _console.print_info("RALPH_INSTRUCTIONS.md preview:")
+        _console.print_separator()
+        print(config_generator.generate_instructions())
+        _console.print_separator()
+
+        sys.exit(0)
+
+    if args.dry_run:
+        _console.print_info("Dry run mode - files would be written to:")
+        _console.print_info(f"  - {output_dir}/ralph.yml")
+        _console.print_info(f"  - {output_dir}/RALPH_INSTRUCTIONS.md")
+        _console.print_info(f"  - {output_dir}/PROMPT.md")
+        sys.exit(0)
+
+    # Handle merge mode
+    ralph_yml_path = output_dir / "ralph.yml"
+    if args.merge and ralph_yml_path.exists():
+        _console.print_info("Merging with existing ralph.yml...")
+        # For now, just warn - full merge logic can be added later
+        _console.print_warning("Merge mode not fully implemented, overwriting existing files")
+
+    # Write files
+    config_generator.write_all(output_dir)
+
+    _console.print_separator()
+    _console.print_success("Onboarding complete!")
+    _console.print_info(f"Generated files in: {output_dir}")
+    _console.print_info("  - ralph.yml (configuration)")
+    _console.print_info("  - RALPH_INSTRUCTIONS.md (learned patterns)")
+    _console.print_info("  - PROMPT.md (task template)")
+    _console.print_info("")
+    _console.print_info("Next steps:")
+    _console.print_info("  1. Edit PROMPT.md with your task description")
+    _console.print_info("  2. Run 'ralph run' to start the orchestrator")
+
+
 def cmd_tui(args):
     """Run RALPH with TUI attached."""
     try:
@@ -496,6 +703,7 @@ Commands:
     ralph init          Initialize a new Ralph project
     ralph status        Show current Ralph status
     ralph clean         Clean up agent workspace
+    ralph onboard       Analyze Claude Code project and generate config
     ralph prompt        Generate structured prompt from rough ideas
     ralph tui           Run orchestrator with Terminal UI attached
     ralph watch         Watch a running orchestrator via WebSocket
@@ -514,6 +722,10 @@ Examples:
     ralph init                      # Set up new project
     ralph status                    # Check current progress
     ralph clean                     # Clean agent workspace
+    ralph onboard                   # Analyze and generate config for current dir
+    ralph onboard ~/my-project      # Onboard a specific project
+    ralph onboard . --static        # Static analysis (no API calls)
+    ralph onboard . --analyze-only  # Show analysis without writing files
     ralph prompt "build a web API"  # Generate API prompt
     ralph prompt -i                 # Interactive prompt creation
     ralph prompt -o task.md "scrape data" "save to CSV"  # Custom output
@@ -533,7 +745,74 @@ Examples:
     
     # Clean command
     subparsers.add_parser('clean', help='Clean up agent workspace')
-    
+
+    # Onboard command - analyze Claude Code projects and generate RALPH config
+    onboard_parser = subparsers.add_parser(
+        'onboard',
+        help='Analyze Claude Code project and generate RALPH configuration',
+        description='Scan a Claude Code project to extract patterns, workflows, and MCP configurations, then generate optimized ralph.yml and related files.',
+    )
+    onboard_parser.add_argument(
+        'project_path',
+        nargs='?',
+        default='.',
+        help='Path to the project to onboard (default: current directory)'
+    )
+    # Analysis mode options
+    onboard_parser.add_argument(
+        '--agent',
+        action='store_true',
+        default=True,
+        help='Use Claude agent for intelligent analysis (default)'
+    )
+    onboard_parser.add_argument(
+        '--static',
+        action='store_true',
+        help='Use static analysis only (parse JSONL directly, no API calls)'
+    )
+    onboard_parser.add_argument(
+        '--use-memory',
+        action='store_true',
+        help='Explicitly use mcp-memory/episodic memory for deeper analysis'
+    )
+    # Settings options
+    onboard_parser.add_argument(
+        '--inherit-settings',
+        action='store_true',
+        default=True,
+        help="Load user's ~/.claude/settings.json (default)"
+    )
+    onboard_parser.add_argument(
+        '--no-inherit',
+        action='store_true',
+        help="Don't inherit user settings (isolated analysis)"
+    )
+    # Output options
+    onboard_parser.add_argument(
+        '-o', '--output-dir',
+        help='Output directory for generated files (default: project root)'
+    )
+    onboard_parser.add_argument(
+        '-a', '--analyze-only',
+        action='store_true',
+        help='Show analysis without generating files'
+    )
+    onboard_parser.add_argument(
+        '--merge',
+        action='store_true',
+        help='Merge with existing ralph.yml instead of overwriting'
+    )
+    onboard_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Preview changes without writing files'
+    )
+    onboard_parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help='Show detailed analysis output'
+    )
+
     # Prompt command
     prompt_parser = subparsers.add_parser('prompt', help='Generate structured prompt from rough ideas')
     prompt_parser.add_argument(
@@ -818,7 +1097,11 @@ Examples:
     if command == 'clean':
         clean_workspace()
         sys.exit(0)
-    
+
+    if command == 'onboard':
+        cmd_onboard(args)
+        sys.exit(0)
+
     if command == 'prompt':
         # Use interactive mode if no ideas provided or -i flag used
         interactive_mode = args.interactive or not args.ideas

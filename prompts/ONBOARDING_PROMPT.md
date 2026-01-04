@@ -747,13 +747,35 @@ Python 3.10+
 - Total onboarding tests: 134 (13 SettingsLoader + 21 ProjectScanner + 20 AgentAnalyzer + 22 HistoryAnalyzer + 27 PatternExtractor + 31 ConfigGenerator)
 - Commit: `d4fa12b`
 
-### Phase 7: CLI Integration (Priority: HIGH)
-- [ ] Add `onboard` subcommand to CLI
-- [ ] Implement `--agent` and `--static` modes
-- [ ] Implement `--use-memory` flag
-- [ ] Implement `--inherit-settings` / `--no-inherit`
-- [ ] Add progress output and formatting
-- [ ] Handle errors gracefully
+### Phase 7: CLI Integration (Priority: HIGH) ✅ COMPLETE
+- [x] Add `onboard` subcommand to CLI
+- [x] Implement `--agent` and `--static` modes
+- [x] Implement `--use-memory` flag
+- [x] Implement `--inherit-settings` / `--no-inherit`
+- [x] Add progress output and formatting
+- [x] Handle errors gracefully
+
+**Completed**: Iteration 7 (Jan 3, 2026)
+- Added `ralph onboard` CLI command to `src/ralph_orchestrator/__main__.py`
+- Implemented `cmd_onboard()` function with full workflow:
+  1. Load settings (SettingsLoader)
+  2. Scan project (ProjectScanner)
+  3. Analyze (AgentAnalyzer or HistoryAnalyzer based on --static)
+  4. Extract patterns (PatternExtractor)
+  5. Generate config (ConfigGenerator)
+- CLI options implemented:
+  - `--static`: Use static JSONL parsing (no API calls)
+  - `--agent`: Use Claude for intelligent analysis (default)
+  - `--use-memory`: Enable episodic memory analysis
+  - `--inherit-settings` / `--no-inherit`: Control user settings inheritance
+  - `-o/--output-dir`: Custom output directory
+  - `-a/--analyze-only`: Preview analysis without writing files
+  - `--dry-run`: Show what files would be written
+  - `--merge`: Merge with existing config (stub for now)
+  - `-v/--verbose`: Detailed output
+- Added help text and examples in CLI epilog
+- Total onboarding tests: 134 - all passing
+- Commit: pending
 
 ### Phase 8: Testing & Documentation (Priority: MEDIUM)
 - [ ] Unit tests for all modules
