@@ -704,6 +704,66 @@ def cmd_watch(args):
     asyncio.run(run_watch())
 
 
+def cmd_daemon(args):
+    """Manage daemon process."""
+    from .daemon.cli import daemon_start, daemon_stop, daemon_status, daemon_logs
+
+    daemon_cmd = args.daemon_command
+
+    if daemon_cmd == 'start':
+        result = daemon_start(prompt_file=getattr(args, 'prompt_file', None))
+        if result['success']:
+            _console.print_success(result['message'])
+        else:
+            _console.print_error(result['message'])
+            sys.exit(1)
+
+    elif daemon_cmd == 'stop':
+        result = daemon_stop()
+        if result['success']:
+            _console.print_success(result['message'])
+        else:
+            _console.print_warning(result['message'])
+
+    elif daemon_cmd == 'status':
+        result = daemon_status()
+        if result['running']:
+            _console.print_success(result['message'])
+        else:
+            _console.print_info(result['message'])
+
+    elif daemon_cmd == 'logs':
+        result = daemon_logs(
+            tail=getattr(args, 'tail', None),
+            follow=getattr(args, 'follow', False),
+        )
+        if result['success']:
+            if result.get('follow_mode'):
+                # Follow mode - stream the log file
+                log_file = result.get('log_file')
+                _console.print_info(f"Following {log_file} (Ctrl+C to stop)...")
+                try:
+                    import subprocess
+                    subprocess.run(['tail', '-f', log_file])
+                except KeyboardInterrupt:
+                    pass
+            else:
+                # Print log content
+                content = result.get('content', '')
+                if content:
+                    print(content)
+                else:
+                    _console.print_info("Log file is empty")
+        else:
+            _console.print_warning(result['message'])
+
+    else:
+        # No subcommand provided - show help
+        _console.print_error("Please specify a daemon command: start, stop, status, or logs")
+        _console.print_info("Usage: ralph daemon {start|stop|status|logs}")
+        sys.exit(1)
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -720,6 +780,7 @@ Commands:
     ralph prompt        Generate structured prompt from rough ideas
     ralph tui           Run orchestrator with Terminal UI attached
     ralph watch         Watch a running orchestrator via WebSocket
+    ralph daemon        Manage background daemon process
 
 Configuration:
     Use -c/--config to load settings from a YAML file.
@@ -917,6 +978,54 @@ Examples:
         choices=['default', 'cyberpunk', 'light'],
         default='default',
         help='TUI color theme (default: default)',
+    )
+
+    # Daemon command - manage background daemon process
+    daemon_parser = subparsers.add_parser(
+        'daemon',
+        help='Manage background daemon process',
+        description='Start, stop, and manage the Ralph daemon for background orchestration.',
+    )
+    daemon_subparsers = daemon_parser.add_subparsers(dest='daemon_command', help='Daemon commands')
+
+    # daemon start
+    daemon_start_parser = daemon_subparsers.add_parser(
+        'start',
+        help='Start the daemon',
+    )
+    daemon_start_parser.add_argument(
+        '-P', '--prompt',
+        dest='prompt_file',
+        help='Path to prompt file to run',
+    )
+
+    # daemon stop
+    daemon_subparsers.add_parser(
+        'stop',
+        help='Stop the daemon',
+    )
+
+    # daemon status
+    daemon_subparsers.add_parser(
+        'status',
+        help='Check daemon status',
+    )
+
+    # daemon logs
+    daemon_logs_parser = daemon_subparsers.add_parser(
+        'logs',
+        help='View daemon logs',
+    )
+    daemon_logs_parser.add_argument(
+        '--tail',
+        type=int,
+        default=None,
+        help='Number of lines from end to show',
+    )
+    daemon_logs_parser.add_argument(
+        '-f', '--follow',
+        action='store_true',
+        help='Follow log output',
     )
 
     # Run command (default) - add all the run options
@@ -1127,6 +1236,10 @@ Examples:
 
     if command == 'watch':
         cmd_watch(args)
+        sys.exit(0)
+
+    if command == 'daemon':
+        cmd_daemon(args)
         sys.exit(0)
 
     # Run command (default)
