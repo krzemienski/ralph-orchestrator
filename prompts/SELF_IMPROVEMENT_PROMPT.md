@@ -36,7 +36,7 @@ This project has:
 | Phase | Status | Evidence Required |
 |-------|--------|-------------------|
 | Phase 00: TUI Testing | ✅ VALIDATED | `validation-evidence/phase-00/tui-output.txt` |
-| Phase 01: Process Isolation | ⏳ NEEDS VALIDATION | CLI output showing parallel instances |
+| Phase 01: Process Isolation | ✅ VALIDATED | `validation-evidence/phase-01/parallel-instances.txt`, `port-allocation.txt` |
 | Phase 02: Daemon Mode | ⏳ NEEDS VALIDATION | CLI output showing immediate return |
 | Phase 03: REST API Enhancement | ⏳ NEEDS VALIDATION | curl response captures |
 | Phase 04: Mobile Foundation | ⏳ NEEDS VALIDATION | iOS Simulator screenshot |
@@ -129,14 +129,20 @@ pkill -f "ralph tui"
 
 ---
 
-#### Phase 01: Process Isolation Foundation ⏳ NEEDS VALIDATION
+#### Phase 01: Process Isolation Foundation ✅ VALIDATED
 
 | Plan | Acceptance Criteria | Status |
 |------|---------------------|--------|
-| 01-01 | InstanceManager with CRUD, state dirs | ⏳ PENDING |
-| 01-02 | Per-instance .agent-{id}/ directories | ⏳ PENDING |
-| 01-03 | Dynamic port allocation (8080-8180) | ⏳ PENDING |
-| 01-04 | Instance-aware git branches (ralph-{id}) | ⏳ PENDING |
+| 01-01 | InstanceManager with CRUD, state dirs | ✅ VALIDATED |
+| 01-02 | Per-instance .agent-{id}/ directories | ✅ VALIDATED |
+| 01-03 | Dynamic port allocation (8080-8180) | ✅ VALIDATED |
+| 01-04 | Instance-aware git branches (ralph-{id}) | ✅ VALIDATED |
+
+**Evidence**: `validation-evidence/phase-01/parallel-instances.txt`, `validation-evidence/phase-01/port-allocation.txt`
+- Created 2 instances with unique IDs (3ff90cf2, 93b2dbf0)
+- State directories created: `~/.ralph/state-{id}/`
+- Ports dynamically allocated: 8080, 8081, 8082, 8083 (no conflicts)
+- Git branch names generated: `ralph-{id}`
 
 **REAL VALIDATION GATE** (NOT `pytest`):
 ```bash
@@ -295,8 +301,8 @@ cat ~/.ralph/logs/api.log | tail -50 > validation-evidence/phase-06/api-calls.tx
 
 ### Global Success Criteria
 
-- [ ] Run 2+ ralph instances simultaneously without conflicts
-  - **Evidence**: `validation-evidence/phase-01/parallel-instances.txt`
+- [x] Run 2+ ralph instances simultaneously without conflicts
+  - **Evidence**: `validation-evidence/phase-01/parallel-instances.txt` ✅
 - [ ] `ralph run --daemon` returns immediately, runs in background
   - **Evidence**: `validation-evidence/phase-02/daemon-start.txt` shows < 1s
 - [ ] REST API supports: start/stop/pause/resume orchestrations
