@@ -77,3 +77,8 @@ export interface OrchestratorDetail extends Orchestrator {
   tasks: Task[];
   logs: LogEntry[];
 }
+
+/**
+ * Re-export metrics types for convenience
+ */
+export type { MetricsDataPoint, MetricsWindow, ChartData, MetricType } from './metricsHelpers';
