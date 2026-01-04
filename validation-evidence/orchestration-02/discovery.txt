@@ -1,0 +1,5 @@
+Discovered 121 skills
+validator: 121 relevant skills
+researcher: 121 relevant skills
+implementer: 121 relevant skills
+analyst: 121 relevant skills

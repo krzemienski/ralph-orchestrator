@@ -3,5 +3,18 @@
 # ABOUTME: Provides skill discovery, MCP profiling, and subagent spawning
 
 from ralph_orchestrator.orchestration.config import SubagentProfile, SUBAGENT_PROFILES
+from ralph_orchestrator.orchestration.discovery import (
+    SkillInfo,
+    discover_skills,
+    get_skills_for_subagent,
+    get_required_skills_for_subagent,
+)
 
-__all__ = ["SubagentProfile", "SUBAGENT_PROFILES"]
+__all__ = [
+    "SubagentProfile",
+    "SUBAGENT_PROFILES",
+    "SkillInfo",
+    "discover_skills",
+    "get_skills_for_subagent",
+    "get_required_skills_for_subagent",
+]

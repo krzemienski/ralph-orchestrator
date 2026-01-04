@@ -265,7 +265,7 @@ uv run pytest tests/test_orchestration_config.py -v > validation-evidence/orches
 
 ---
 
-## Phase O2: Skill Discovery | ⏳ NEEDS_VALIDATION
+## Phase O2: Skill Discovery | ✅ VALIDATED
 
 ### What To Build
 
@@ -277,11 +277,11 @@ Create a skill discovery mechanism that:
 
 ### Acceptance Criteria
 
-- [ ] discover_skills() function exists in src/ralph_orchestrator/orchestration/discovery.py
-- [ ] Returns dict of skill_name → SkillInfo objects
-- [ ] SkillInfo contains: path, description, subagent_types (which subagents should use it)
-- [ ] get_skills_for_subagent(subagent_type) returns relevant skills
-- [ ] Unit tests pass
+- [x] discover_skills() function exists in src/ralph_orchestrator/orchestration/discovery.py
+- [x] Returns dict of skill_name → SkillInfo objects
+- [x] SkillInfo contains: path, description, subagent_types (which subagents should use it)
+- [x] get_skills_for_subagent(subagent_type) returns relevant skills
+- [x] Unit tests pass (14 tests)
 
 ### Validation Gate
 
@@ -497,4 +497,4 @@ Write results to coordination file as JSON:
 
 **BEGIN ORCHESTRATION IMPROVEMENT**
 
-Continue with Phase O2 (Skill Discovery) - Phase O0 and O1 are already VALIDATED.
+Continue with Phase O3 (MCP Tool Discovery) - Phases O0, O1, and O2 are already VALIDATED.
