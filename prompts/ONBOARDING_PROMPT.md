@@ -775,7 +775,7 @@ Python 3.10+
   - `-v/--verbose`: Detailed output
 - Added help text and examples in CLI epilog
 - Total onboarding tests: 134 - all passing
-- Commit: pending
+- Commit: `da93511`
 
 ### Phase 8: Testing & Documentation (Priority: MEDIUM)
 - [ ] Unit tests for all modules
