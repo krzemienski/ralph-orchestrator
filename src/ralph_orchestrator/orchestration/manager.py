@@ -297,7 +297,7 @@ class OrchestrationManager:
 
             result["stdout"] = stdout_bytes.decode("utf-8") if stdout_bytes else ""
             result["stderr"] = stderr_bytes.decode("utf-8") if stderr_bytes else ""
-            result["return_code"] = proc.returncode if proc.returncode is not None else 0
+            result["return_code"] = proc.returncode if proc.returncode is not None else -1
 
             # Try to parse JSON from stdout
             if result["stdout"]:
@@ -312,6 +312,8 @@ class OrchestrationManager:
             )
 
         except asyncio.TimeoutError:
+            proc.kill()  # Terminate the subprocess
+            await proc.wait()  # Reap to avoid zombies
             result["error"] = f"Timeout after {timeout} seconds"
             logger.error(f"Subagent {subagent_type} timed out after {timeout}s")
         except FileNotFoundError:
