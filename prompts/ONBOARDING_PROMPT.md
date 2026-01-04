@@ -666,18 +666,28 @@ Python 3.10+
 
 ## Implementation Phases
 
-### Phase 1: Settings & Infrastructure (Priority: HIGH)
-- [ ] Implement `SettingsLoader` class
-- [ ] Load `~/.claude/settings.json` (user settings)
-- [ ] Load `[project]/.mcp.json` (project MCP config)
-- [ ] Merge settings with proper precedence
-- [ ] Detect installed analysis plugins (memory, fogmap, etc.)
+### Phase 1: Settings & Infrastructure (Priority: HIGH) ✅ COMPLETE
+- [x] Implement `SettingsLoader` class
+- [x] Load `~/.claude/settings.json` (user settings)
+- [x] Load `[project]/.mcp.json` (project MCP config)
+- [x] Merge settings with proper precedence
+- [x] Detect installed analysis plugins (memory, fogmap, etc.)
 
-### Phase 2: Core Scanning (Priority: HIGH)
-- [ ] Implement `ProjectScanner` class
-- [ ] Detect project type from manifest files
-- [ ] Find Claude Code history directory mapping (hash lookup)
-- [ ] Parse and merge MCP configurations
+**Completed**: Iteration 1 (Jan 3, 2026)
+- Created `src/ralph_orchestrator/onboarding/settings_loader.py`
+- 13 tests in `tests/test_onboarding_settings.py` - all passing
+- Commit: `bbb8bcf`
+
+### Phase 2: Core Scanning (Priority: HIGH) ✅ COMPLETE
+- [x] Implement `ProjectScanner` class
+- [x] Detect project type from manifest files
+- [x] Find Claude Code history directory mapping (hash lookup)
+- [x] Parse and merge MCP configurations (delegates to SettingsLoader)
+
+**Completed**: Iteration 2 (Jan 3, 2026)
+- Created `src/ralph_orchestrator/onboarding/scanner.py`
+- 21 tests in `tests/test_onboarding_scanner.py` - all passing
+- Total onboarding tests: 34 (13 SettingsLoader + 21 ProjectScanner)
 
 ### Phase 3: Agent-Assisted Analysis (Priority: HIGH)
 - [ ] Implement `AgentAnalyzer` class
