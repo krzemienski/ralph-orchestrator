@@ -270,6 +270,9 @@ class RalphConfig:
     iteration_telemetry: bool = True  # Enable per-iteration telemetry
     output_preview_length: int = 500  # Max chars for output preview in telemetry
 
+    # Orchestration configuration (Phase O5)
+    enable_orchestration: bool = False  # Enable subagent orchestration
+
     # Thread safety lock - not included in initialization/equals
     _lock: threading.RLock = field(
         default_factory=threading.RLock, init=False, repr=False, compare=False
