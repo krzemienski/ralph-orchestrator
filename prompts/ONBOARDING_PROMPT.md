@@ -777,12 +777,18 @@ Python 3.10+
 - Total onboarding tests: 134 - all passing
 - Commit: `da93511`
 
-### Phase 8: Testing & Documentation (Priority: MEDIUM)
-- [ ] Unit tests for all modules
-- [ ] Integration tests for both analysis modes
+### Phase 8: Testing & Documentation (Priority: MEDIUM) 🔄 IN PROGRESS
+- [x] Unit tests for all modules (134 tests across 6 test files)
+- [x] CLI integration tests for ralph onboard command (23 tests)
+- [ ] Integration tests for both analysis modes (static & agent)
 - [ ] Mock MCP servers for testing
 - [ ] Usage documentation with examples
 - [ ] Document supported analysis plugins
+
+**Progress (Iteration 8)**: Jan 3, 2026
+- Created `tests/test_onboarding_cli.py` with 23 comprehensive CLI integration tests
+- Tests cover: CLI invocation, --static mode, --analyze-only, --dry-run, --output-dir, --no-inherit, agent mode fallback, project type detection, merge mode, success completion
+- Total onboarding tests: 157 (134 unit + 23 CLI integration) - all passing
 
 ---
 
