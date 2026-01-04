@@ -127,17 +127,18 @@ Phase 00 (TUI) ──► Phase 01 (Isolation) ──► Phase 02 (Daemon)
 |------|---------------------|-------|--------|
 | 05-01 | OrchestratorCard list view | 20 | ✅ DONE |
 | 05-02 | Detail view with tasks and logs | 31 | ✅ DONE |
-| 05-03 | WebSocket real-time updates | ~8 | ⏳ PENDING |
+| 05-03 | WebSocket real-time updates | 25 | ✅ DONE |
 | 05-04 | MetricsChart with 60s rolling window | ~7 | ⏳ PENDING |
 
-**Status**: 93 tests passing (42 Phase 04 + 20 Phase 05-01 + 31 Phase 05-02)
+**Status**: 118 tests passing (42 Phase 04 + 20 Phase 05-01 + 31 Phase 05-02 + 25 Phase 05-03)
 
-**Plan 05-02 Implementation Notes:**
-- Added 25 helper function tests (formatTaskStatus, getTaskStatusColor, formatLogEntry, getLogLevelColor, calculateProgress, formatTimestamp)
-- Added 6 API tests (fetchOrchestratorDetail, fetchOrchestratorLogs with limit support)
-- Added warning color to theme
-- Added Task, LogEntry, OrchestratorDetail types
-- Screen component pending (next iteration)
+**Plan 05-03 Implementation Notes:**
+- Created WebSocketManager with connection lifecycle (connecting, connected, disconnected, error)
+- Implemented parseWebSocketMessage for type-safe message parsing
+- Supports message types: orchestrator_update, log_entry, task_update, connection_status
+- Subscriber pattern with unsubscribe support
+- Auto-reconnection capability
+- JWT token auth via URL parameter
 
 **Validation Gate**: Dashboard displays live orchestrators
 
