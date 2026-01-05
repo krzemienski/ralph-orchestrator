@@ -6,7 +6,7 @@
 agent: claude
 prompt_file: prompts/mobile/PROMPT.md
 max_iterations: 50
-orchestration: true
+enable_orchestration: true
 
 # Working directory for the mobile app build
 working_directory: ./ralph-mobile
@@ -15,7 +15,6 @@ adapters:
   claude:
     enabled: true
     timeout: 900  # 15 minutes per iteration (complex build phases)
-    model: claude-sonnet-4-20250514
 
 # Phase-based validation
 validation:
