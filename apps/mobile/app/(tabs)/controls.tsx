@@ -35,11 +35,13 @@ export default function ControlsScreen(): React.JSX.Element {
   const [actionHistory, setActionHistory] = useState<ActionRecord[]>([]);
 
   // Find active orchestrator (running or paused)
+  // Defensive check - ensure orchestrators is always an array
+  const safeOrchestrators = Array.isArray(orchestrators) ? orchestrators : [];
   const activeOrchestrator = useMemo(() => {
-    return orchestrators.find(
+    return safeOrchestrators.find(
       (o) => o.status === 'running' || o.status === 'paused'
     ) ?? null;
-  }, [orchestrators]);
+  }, [safeOrchestrators]);
 
   // Check if any mutation is loading
   const isMutating =

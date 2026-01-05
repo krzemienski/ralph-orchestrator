@@ -25,14 +25,16 @@ interface OrchestratorSelectorProps {
  * OrchestratorSelector component
  */
 export function OrchestratorSelector({
-  orchestrators,
+  orchestrators = [],
   selectedId,
   onSelect,
   isLoading = false,
 }: OrchestratorSelectorProps): React.JSX.Element {
   const [modalVisible, setModalVisible] = useState(false);
 
-  const selectedOrchestrator = orchestrators.find((o) => o.id === selectedId);
+  // Defensive check - ensure orchestrators is always an array
+  const safeOrchestrators = Array.isArray(orchestrators) ? orchestrators : [];
+  const selectedOrchestrator = safeOrchestrators.find((o) => o.id === selectedId);
 
   const handleOpen = useCallback(() => {
     setModalVisible(true);
@@ -133,7 +135,7 @@ export function OrchestratorSelector({
           </View>
 
           {/* Orchestrator List */}
-          {orchestrators.length === 0 ? (
+          {safeOrchestrators.length === 0 ? (
             <View className="flex-1 items-center justify-center p-8">
               <Text className="text-2xl mb-2">📭</Text>
               <Text className="text-base text-textSecondary text-center">
@@ -145,7 +147,7 @@ export function OrchestratorSelector({
             </View>
           ) : (
             <FlatList
-              data={orchestrators}
+              data={safeOrchestrators}
               renderItem={renderItem}
               keyExtractor={keyExtractor}
               showsVerticalScrollIndicator={false}
