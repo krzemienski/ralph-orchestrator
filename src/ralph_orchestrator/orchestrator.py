@@ -735,19 +735,19 @@ class RalphOrchestrator:
         - "test", "validate", "verify" -> validator
         - "research", "find", "search" -> researcher
         - "implement", "fix", "build", "add" -> implementer
-        - "debug", "analyze", "investigate" -> debugger (analyst)
+        - "debug", "analyze", "investigate" -> analyst
 
         Args:
             prompt: Current prompt text
 
         Returns:
-            Subagent type string (validator, researcher, implementer, debugger)
+            Subagent type string (validator, researcher, implementer, analyst)
         """
         prompt_lower = prompt.lower()
 
         # Priority order matters - check more specific patterns first
         if any(kw in prompt_lower for kw in ['debug', 'analyze', 'investigate', 'root cause', 'error', 'bug']):
-            return 'debugger'
+            return 'analyst'
         if any(kw in prompt_lower for kw in ['test', 'validate', 'verify', 'check', 'ensure']):
             return 'validator'
         if any(kw in prompt_lower for kw in ['research', 'find', 'search', 'look up', 'explore']):
