@@ -21,7 +21,7 @@ enable_metrics: true
 verbose: true
 enable_validation: true
 validation_interactive: false
-enable_orchestration: true  # Interactive for user approval
+enable_orchestration: false  # Interactive for user approval
 
 # Web UI (auto-start with no auth)
 enable_web: false
