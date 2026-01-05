@@ -1,0 +1,11 @@
+# Mobile test configuration for ralph-orchestrator validation
+# Simple config to test subagent spawning and timeout handling
+
+agent: claude
+prompt_file: prompts/mobile/PROMPT.md
+max_iterations: 5
+
+adapters:
+  claude:
+    enabled: true
+    timeout: 600

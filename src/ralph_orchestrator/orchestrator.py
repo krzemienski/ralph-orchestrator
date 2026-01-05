@@ -23,6 +23,7 @@ from .safety import SafetyGuard
 from .context import ContextManager
 from .output import RalphConsole
 from .instance import InstanceManager, InstanceInfo
+from .orchestration import OrchestrationManager
 
 # Setup logging
 logging.basicConfig(
@@ -98,6 +99,7 @@ class RalphOrchestrator:
             self.output_preview_length = getattr(config, 'output_preview_length', 500)
             self.enable_validation = getattr(config, 'enable_validation', False)
             self.validation_interactive = getattr(config, 'validation_interactive', True)
+            self.enable_orchestration = getattr(config, 'enable_orchestration', False)
         else:
             # Individual parameters
             self.prompt_file = Path(prompt_file_or_config if prompt_file_or_config else "PROMPT.md")
@@ -114,6 +116,7 @@ class RalphOrchestrator:
             self.output_preview_length = output_preview_length
             self.enable_validation = enable_validation
             self.validation_interactive = validation_interactive
+            self.enable_orchestration = False  # Only available via config object
 
         # Initialize instance management (for per-instance isolation)
         self.instance_manager = instance_manager
@@ -159,6 +162,15 @@ class RalphOrchestrator:
         # Validation state attributes
         self.validation_proposal = None   # Stores AI's proposed strategy
         self.validation_approved = False  # User confirmation status
+
+        # Initialize OrchestrationManager if orchestration enabled
+        self._orchestration_manager = None
+        self._config_for_orchestration = None
+        if self.enable_orchestration:
+            if hasattr(prompt_file_or_config, 'prompt_file'):
+                self._config_for_orchestration = prompt_file_or_config
+                self._orchestration_manager = OrchestrationManager(prompt_file_or_config)
+                logger.info("OrchestrationManager initialized for subagent spawning")
 
         # Signal handling - use basic signal registration here
         # The async handlers will be set up when arun() is called
@@ -601,14 +613,18 @@ class RalphOrchestrator:
         
         # Update current task status
         self._update_current_task('in_progress')
-        
-        # Try primary adapter with prompt file path
-        response = await self.current_adapter.aexecute(
-            prompt, 
-            prompt_file=str(self.prompt_file),
-            verbose=self.verbose
-        )
-        
+
+        # Route to orchestration or direct adapter based on config
+        if self.enable_orchestration and self._orchestration_manager:
+            response = await self._execute_with_orchestration(prompt)
+        else:
+            # Original path: direct adapter execution
+            response = await self.current_adapter.aexecute(
+                prompt,
+                prompt_file=str(self.prompt_file),
+                verbose=self.verbose
+            )
+
         if not response.success and len(self.adapters) > 1 and not self.stop_requested:
             # Try fallback adapters (skip if shutdown requested)
             for name, adapter in self.adapters.items():
@@ -659,7 +675,87 @@ class RalphOrchestrator:
                 self._update_current_task('completed')
         
         return response.success
-    
+
+    async def _execute_with_orchestration(self, prompt: str):
+        """Execute iteration using OrchestrationManager subagent spawning.
+
+        Routes to appropriate subagent type based on prompt/task analysis.
+        Uses 300-second timeout (not 81) for adequate agent completion.
+
+        Args:
+            prompt: The current prompt text
+
+        Returns:
+            Response object compatible with adapter response format
+        """
+        from dataclasses import dataclass
+
+        @dataclass
+        class OrchestrationResponse:
+            success: bool
+            output: str
+            tokens_used: int = 0
+
+        logger.info("Executing orchestrated iteration")
+
+        # Determine subagent type based on prompt content
+        subagent_type = self._select_subagent_type(prompt)
+        logger.info(f"Selected subagent type: {subagent_type}")
+
+        # Generate subagent prompt with skill/MCP instructions
+        subagent_prompt = self._orchestration_manager.generate_subagent_prompt(
+            subagent_type=subagent_type,
+            phase=f"Iteration {self.metrics.iterations}",
+            criteria=[prompt[:500]],  # Use prompt excerpt as criteria
+        )
+
+        # Spawn subagent with proper timeout (300s, not 81s)
+        result = await self._orchestration_manager.spawn_subagent(
+            subagent_type=subagent_type,
+            prompt=subagent_prompt,
+            timeout=300,  # 5 minutes - adequate for Claude execution
+        )
+
+        # Convert result to response format
+        if result["success"]:
+            output = result.get("stdout", "")
+            if result.get("parsed_json"):
+                output = json.dumps(result["parsed_json"], indent=2)
+            self.last_response_output = output
+            return OrchestrationResponse(success=True, output=output)
+        else:
+            error_msg = result.get("error", "Unknown subagent error")
+            logger.warning(f"Subagent execution failed: {error_msg}")
+            return OrchestrationResponse(success=False, output=error_msg)
+
+    def _select_subagent_type(self, prompt: str) -> str:
+        """Select appropriate subagent type based on prompt content.
+
+        Simple heuristic based on keywords in prompt:
+        - "test", "validate", "verify" -> validator
+        - "research", "find", "search" -> researcher
+        - "implement", "fix", "build", "add" -> implementer
+        - "debug", "analyze", "investigate" -> debugger (analyst)
+
+        Args:
+            prompt: Current prompt text
+
+        Returns:
+            Subagent type string (validator, researcher, implementer, debugger)
+        """
+        prompt_lower = prompt.lower()
+
+        # Priority order matters - check more specific patterns first
+        if any(kw in prompt_lower for kw in ['debug', 'analyze', 'investigate', 'root cause', 'error', 'bug']):
+            return 'debugger'
+        if any(kw in prompt_lower for kw in ['test', 'validate', 'verify', 'check', 'ensure']):
+            return 'validator'
+        if any(kw in prompt_lower for kw in ['research', 'find', 'search', 'look up', 'explore']):
+            return 'researcher'
+
+        # Default to implementer for most tasks
+        return 'implementer'
+
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count from text."""
         # Rough estimate: 1 token per 4 characters
