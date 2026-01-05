@@ -26,7 +26,31 @@
 - [x] Created app/orchestrator/[id].tsx placeholder for Phase 3 navigation
 - [x] Validated TypeScript compilation (0 errors)
 
-### Phase 3: Output Viewer Screen - PENDING
+### Phase 3: Output Viewer Screen - COMPLETE
+- [x] Created components/output/LogEntry.tsx (timestamp, level badge, message, expandable metadata)
+- [x] Created components/output/LogFilter.tsx (level toggles, pause/resume, clear logs)
+- [x] Created components/output/LogList.tsx (virtualized FlatList, auto-scroll, scroll-lock)
+- [x] Created components/output/OrchestratorSelector.tsx (dropdown modal, status badges)
+- [x] Created components/output/ConnectionStatus.tsx (WebSocket connection indicator)
+- [x] Updated app/(tabs)/output.tsx with full WebSocket integration
+- [x] Validated TypeScript compilation (0 errors)
+
+### Phase 4: Control Panel Screen - COMPLETE
+- [x] Created components/controls/ControlButtons.tsx (context-aware buttons, haptic feedback, confirmation dialogs)
+- [x] Created components/controls/NewOrchestrationForm.tsx (prompt/config inputs, validation, KeyboardAvoidingView)
+- [x] Created components/controls/CurrentStatus.tsx (progress circle, metrics grid, ETA calculation)
+- [x] Created components/controls/ActionHistory.tsx (recent actions log, success/pending/failed indicators)
+- [x] Updated app/(tabs)/controls.tsx with full implementation (mutations, action history, modal form)
+- [x] Validated TypeScript compilation (0 errors)
+
+### Phase 5: Orchestrator Detail View - COMPLETE
+- [x] Created components/detail/Header.tsx (name, ID copy, status badge, quick actions with haptic feedback)
+- [x] Created components/detail/MetricsGrid.tsx (iterations, tokens with K/M formatting, duration, success rate)
+- [x] Created components/detail/ProgressSection.tsx (circular + linear progress, ETA calculation, status labels)
+- [x] Created components/detail/TaskList.tsx (task name/status/duration, expandable output/error, sorted by status)
+- [x] Created components/detail/ConfigurationInfo.tsx (prompt file, config file, port, timestamps with copy)
+- [x] Updated app/orchestrator/[id].tsx with full implementation (route param, error/loading states, navigation)
+- [x] Validated all components via code review (visual testing blocked by lack of active orchestrators)
 
 ---
 
