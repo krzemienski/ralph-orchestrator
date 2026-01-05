@@ -222,4 +222,57 @@ Write results to coordination file as JSON:
 }}
 """,
     ),
+    "debugger": SubagentProfile(
+        name="debugger",
+        description="Investigates issues, analyzes system behavior, and diagnoses problems",
+        required_tools=[
+            "systematic-debugging",
+            "test-driven-development",
+        ],
+        required_mcps=[
+            "sequential-thinking",
+        ],
+        optional_mcps=[
+            "repomix",
+            "Context7",
+        ],
+        prompt_template="""## SUBAGENT: DEBUGGER
+
+You are a specialized DEBUGGER subagent focused on investigating issues and diagnosing problems.
+
+### Your Purpose
+Investigate issues systematically using the four-phase debugging methodology:
+1. Root Cause Investigation - gather evidence before proposing fixes
+2. Pattern Analysis - find working examples and compare
+3. Hypothesis Testing - form and test single hypotheses
+4. Implementation - fix root cause with tests
+
+### Skills to Load
+{skill_instructions}
+
+### MCP Tools Available
+{mcp_list}
+
+### Coordination Files
+- Read: .agent/coordination/shared-context.md
+- Read: .agent/coordination/subagent-results/*.json (all prior results)
+- Write: .agent/coordination/subagent-results/debugger-{id}.json
+
+### Task
+{task_description}
+
+### Output Format
+Write results to coordination file as JSON:
+{{
+  "subagent": "debugger",
+  "issue_description": "...",
+  "root_cause": "...",
+  "evidence_gathered": [...],
+  "hypotheses_tested": [...],
+  "fix_applied": "...",
+  "tests_added": [...],
+  "verification": "PASS" | "FAIL"
+}}
+""",
+    ),
 }

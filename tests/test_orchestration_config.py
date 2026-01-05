@@ -78,10 +78,10 @@ class TestSubagentProfiles:
         assert isinstance(SUBAGENT_PROFILES, dict)
 
     def test_subagent_profiles_has_all_types(self):
-        """SUBAGENT_PROFILES should have validator, researcher, implementer, analyst."""
+        """SUBAGENT_PROFILES should have validator, researcher, implementer, analyst, debugger."""
         from ralph_orchestrator.orchestration.config import SUBAGENT_PROFILES
 
-        required_types = {"validator", "researcher", "implementer", "analyst"}
+        required_types = {"validator", "researcher", "implementer", "analyst", "debugger"}
         actual_types = set(SUBAGENT_PROFILES.keys())
 
         assert required_types == actual_types, f"Missing: {required_types - actual_types}"
@@ -131,6 +131,19 @@ class TestSubagentProfiles:
         assert len(analyst.description) > 0
         # Analyst should use sequential-thinking for structured reasoning
         assert "sequential-thinking" in analyst.required_mcps
+
+    def test_debugger_profile(self):
+        """Debugger profile should have debugging-oriented skills."""
+        from ralph_orchestrator.orchestration.config import SUBAGENT_PROFILES, SubagentProfile
+
+        debugger = SUBAGENT_PROFILES["debugger"]
+        assert isinstance(debugger, SubagentProfile)
+        assert debugger.name == "debugger"
+        assert len(debugger.description) > 0
+        # Debugger should have systematic-debugging skill
+        assert "systematic-debugging" in debugger.required_tools
+        # Debugger should use sequential-thinking for structured reasoning
+        assert "sequential-thinking" in debugger.required_mcps
 
     def test_all_profiles_have_prompt_template(self):
         """Every profile should have a non-empty prompt template."""

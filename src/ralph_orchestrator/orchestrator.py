@@ -747,7 +747,7 @@ class RalphOrchestrator:
 
         # Priority order matters - check more specific patterns first
         if any(kw in prompt_lower for kw in ['debug', 'analyze', 'investigate', 'root cause', 'error', 'bug']):
-            return 'analyst'
+            return 'debugger'
         if any(kw in prompt_lower for kw in ['test', 'validate', 'verify', 'check', 'ensure']):
             return 'validator'
         if any(kw in prompt_lower for kw in ['research', 'find', 'search', 'look up', 'explore']):
