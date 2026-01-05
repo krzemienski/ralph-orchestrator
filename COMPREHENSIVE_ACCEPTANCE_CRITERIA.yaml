@@ -1,0 +1,855 @@
+# COMPREHENSIVE ACCEPTANCE CRITERIA - Ralph Mobile React Native App
+# Generated for validation proposal - REAL EXECUTION ONLY (no mocked tests)
+
+project_summary: |
+  Build a production-ready React Native mobile application (Ralph Mobile) that provides
+  real-time control and monitoring of Ralph orchestration workflows. The app connects to
+  a local/remote Ralph backend server and enables users to start, stop, monitor, and
+  validate orchestration runs from their iOS device.
+
+  Target Platform: iOS (iPhone/iPad via Simulator)
+  Tech Stack: React Native 0.81+, Expo SDK 54, NativeWind 4.x, Expo Router 6.x, TanStack React Query 5.x
+
+evidence_policy:
+  required: true
+  directory: validation-evidence/
+  per_phase: true
+  checkpoint_before_complete: true
+  forbidden_validation:
+    - "npm test"
+    - "jest"
+    - "vitest"
+    - "pytest"
+    - "Any unit test with mocks"
+  required_validation:
+    - "iOS Simulator screenshots"
+    - "Actual API calls with curl"
+    - "Real CLI output captures"
+    - "npx expo run:ios builds"
+
+# ============================================================================
+# PHASE 0: PROJECT SETUP & CONFIGURATION
+# ============================================================================
+phase_00:
+  name: "Project Setup & Configuration"
+  goal: "Initialize Expo project with TypeScript, NativeWind, Expo Router, and TanStack Query"
+  plans:
+    - plan_id: "00-01"
+      description: "Create Expo project with TypeScript template"
+      acceptance_criteria:
+        - "Expo project created with TypeScript template"
+        - "Project structure exists at ralph-mobile/"
+        - "package.json contains correct dependencies"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "npx create-expo-app@latest ralph-mobile --template expo-template-blank-typescript"
+          - "ls -la ralph-mobile/"
+        evidence_required:
+          - "validation-evidence/mobile-phase0/project-created.txt"
+
+    - plan_id: "00-02"
+      description: "Install and configure all dependencies"
+      acceptance_criteria:
+        - "expo-router installed and configured"
+        - "nativewind installed with tailwind.config.js"
+        - "TanStack React Query installed"
+        - "All required expo packages installed"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cd ralph-mobile && npm ls --depth=0"
+          - "cat ralph-mobile/tailwind.config.js"
+        evidence_required:
+          - "validation-evidence/mobile-phase0/dependencies-installed.txt"
+
+    - plan_id: "00-03"
+      description: "Configure NativeWind and Tailwind"
+      acceptance_criteria:
+        - "tailwind.config.js created with correct content paths"
+        - "babel.config.js has NativeWind preset"
+        - "global.css created with Tailwind directives"
+        - "NativeWind classes apply correctly"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/tailwind.config.js"
+          - "cat ralph-mobile/babel.config.js"
+        evidence_required:
+          - "validation-evidence/mobile-phase0/nativewind-config.txt"
+
+    - plan_id: "00-04"
+      description: "Configure Expo Router with tab navigation"
+      acceptance_criteria:
+        - "package.json main entry updated to expo-router/entry"
+        - "app/_layout.tsx root layout created"
+        - "app/(tabs)/_layout.tsx tab navigation created"
+        - "4 tabs created: Dashboard, Output, Controls, Settings"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "ls -la ralph-mobile/app/"
+          - "ls -la ralph-mobile/app/(tabs)/"
+        evidence_required:
+          - "validation-evidence/mobile-phase0/router-structure.txt"
+
+    - plan_id: "00-05"
+      description: "Build and run in iOS Simulator"
+      acceptance_criteria:
+        - "App builds without errors using npx expo run:ios"
+        - "App launches in iOS Simulator"
+        - "4-tab navigation bar visible and functional"
+        - "TanStack Query Provider wraps app"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cd ralph-mobile && npx expo run:ios"
+          - "xcrun simctl io booted screenshot validation-evidence/mobile-phase0/tab-navigation.png"
+        evidence_required:
+          - "validation-evidence/mobile-phase0/tab-navigation.png"
+          - "validation-evidence/mobile-phase0/build-output.txt"
+
+  phase_validation:
+    type: "functional"
+    command: "xcrun simctl io booted screenshot validation-evidence/mobile-phase0/phase0-complete.png"
+    evidence_directory: "validation-evidence/mobile-phase0/"
+    expected_files:
+      - "project-created.txt"
+      - "dependencies-installed.txt"
+      - "nativewind-config.txt"
+      - "router-structure.txt"
+      - "tab-navigation.png"
+      - "build-output.txt"
+    expected_result: "iOS Simulator showing app with 4-tab navigation bar visible"
+
+# ============================================================================
+# PHASE 1: TYPE DEFINITIONS & API LAYER
+# ============================================================================
+phase_01:
+  name: "Type Definitions & API Layer"
+  goal: "Define TypeScript interfaces and create API client with WebSocket support"
+  plans:
+    - plan_id: "01-01"
+      description: "Create TypeScript type definitions"
+      acceptance_criteria:
+        - "OrchestratorStatus type defined"
+        - "OrchestratorMetrics interface defined"
+        - "Orchestrator interface defined"
+        - "LogEntry and LogLevel types defined"
+        - "Task and TaskStatus types defined"
+        - "API request/response types defined"
+        - "All types compile without errors"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cd ralph-mobile && npx tsc --noEmit 2>&1"
+          - "cat ralph-mobile/lib/types/index.ts"
+        evidence_required:
+          - "validation-evidence/mobile-phase1/typescript-check.txt"
+          - "validation-evidence/mobile-phase1/types-file.txt"
+
+    - plan_id: "01-02"
+      description: "Create API client with REST endpoints"
+      acceptance_criteria:
+        - "API base URL configurable via env var"
+        - "getOrchestrators() function implemented"
+        - "getOrchestrator(id) function implemented"
+        - "startOrchestrator() function implemented"
+        - "stopOrchestrator() function implemented"
+        - "pauseOrchestrator() function implemented"
+        - "resumeOrchestrator() function implemented"
+        - "getOrchestratorLogs() function implemented"
+        - "getOrchestratorTasks() function implemented"
+        - "Error handling returns typed ApiError objects"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/lib/api/client.ts"
+          - "cd ralph-mobile && npx tsc --noEmit 2>&1"
+        evidence_required:
+          - "validation-evidence/mobile-phase1/api-client.txt"
+
+    - plan_id: "01-03"
+      description: "Create WebSocket connection class"
+      acceptance_criteria:
+        - "OrchestratorWebSocket class implemented"
+        - "connect(orchestratorId) method implemented"
+        - "disconnect() method implemented"
+        - "onLog callback implemented"
+        - "onStatusChange callback implemented"
+        - "onMetricsUpdate callback implemented"
+        - "Reconnection logic implemented"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/lib/api/websocket.ts"
+          - "cd ralph-mobile && npx tsc --noEmit 2>&1"
+        evidence_required:
+          - "validation-evidence/mobile-phase1/websocket-class.txt"
+
+    - plan_id: "01-04"
+      description: "Create React Query hooks"
+      acceptance_criteria:
+        - "useOrchestrators hook with polling"
+        - "useOrchestrator hook with real-time updates"
+        - "useOrchestratorLogs hook with pagination"
+        - "useOrchestratorMutations hook for actions"
+        - "All hooks properly typed"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "ls ralph-mobile/lib/hooks/"
+          - "cd ralph-mobile && npx tsc --noEmit 2>&1"
+        evidence_required:
+          - "validation-evidence/mobile-phase1/hooks-list.txt"
+          - "validation-evidence/mobile-phase1/typescript-final.txt"
+
+  phase_validation:
+    type: "functional"
+    command: "cd ralph-mobile && npx tsc --noEmit 2>&1 | tee ../validation-evidence/mobile-phase1/phase1-complete.txt"
+    evidence_directory: "validation-evidence/mobile-phase1/"
+    expected_files:
+      - "typescript-check.txt"
+      - "types-file.txt"
+      - "api-client.txt"
+      - "websocket-class.txt"
+      - "hooks-list.txt"
+      - "typescript-final.txt"
+    expected_result: "TypeScript compilation with 0 errors"
+
+# ============================================================================
+# PHASE 2: DASHBOARD SCREEN
+# ============================================================================
+phase_02:
+  name: "Dashboard Screen"
+  goal: "Display list of orchestrators with status indicators and real-time metrics"
+  plans:
+    - plan_id: "02-01"
+      description: "Create StatusBadge component"
+      acceptance_criteria:
+        - "StatusBadge component renders status text"
+        - "Color-coded based on status (pending=gray, running=blue, paused=yellow, completed=green, failed=red)"
+        - "Running status has pulse animation"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/dashboard/StatusBadge.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase2/status-badge-code.txt"
+
+    - plan_id: "02-02"
+      description: "Create MetricsSummary component"
+      acceptance_criteria:
+        - "Displays iterations X/Y completed"
+        - "Displays tokens with formatted numbers"
+        - "Displays duration in human-readable format"
+        - "Compact layout for card display"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/dashboard/MetricsSummary.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase2/metrics-summary-code.txt"
+
+    - plan_id: "02-03"
+      description: "Create OrchestratorCard component"
+      acceptance_criteria:
+        - "Card displays orchestrator name"
+        - "Card displays StatusBadge"
+        - "Card displays progress bar"
+        - "Card displays MetricsSummary"
+        - "Card is tappable and navigates to detail view"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/dashboard/OrchestratorCard.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase2/orchestrator-card-code.txt"
+
+    - plan_id: "02-04"
+      description: "Create EmptyState component"
+      acceptance_criteria:
+        - "Displays 'No orchestrators running' message"
+        - "Shows icon or illustration"
+        - "Has 'Start New' button"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/dashboard/EmptyState.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase2/empty-state-code.txt"
+
+    - plan_id: "02-05"
+      description: "Implement Dashboard screen"
+      acceptance_criteria:
+        - "Dashboard uses useOrchestrators hook"
+        - "FlatList renders OrchestratorCard items"
+        - "Pull-to-refresh triggers data reload"
+        - "Empty state displays when no orchestrators"
+        - "Loading spinner during initial load"
+        - "Error state with retry button on API failure"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cd ralph-mobile && npx expo run:ios"
+          - "xcrun simctl io booted screenshot validation-evidence/mobile-phase2/dashboard-view.png"
+        evidence_required:
+          - "validation-evidence/mobile-phase2/dashboard-view.png"
+
+  phase_validation:
+    type: "functional"
+    command: "xcrun simctl io booted screenshot validation-evidence/mobile-phase2/phase2-complete.png"
+    evidence_directory: "validation-evidence/mobile-phase2/"
+    expected_files:
+      - "status-badge-code.txt"
+      - "metrics-summary-code.txt"
+      - "orchestrator-card-code.txt"
+      - "empty-state-code.txt"
+      - "dashboard-view.png"
+    expected_result: "Dashboard with at least 2 orchestrators showing different statuses (or empty state if no backend)"
+
+# ============================================================================
+# PHASE 3: OUTPUT VIEWER SCREEN
+# ============================================================================
+phase_03:
+  name: "Output Viewer Screen"
+  goal: "Stream real-time logs from orchestrators with filtering and auto-scroll"
+  plans:
+    - plan_id: "03-01"
+      description: "Create LogEntry component"
+      acceptance_criteria:
+        - "Displays timestamp in HH:MM:SS.mmm format"
+        - "Displays level badge with correct color"
+        - "Displays message with word wrap"
+        - "Metadata section expandable on tap"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/output/LogEntry.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase3/log-entry-code.txt"
+
+    - plan_id: "03-02"
+      description: "Create LogFilter component"
+      acceptance_criteria:
+        - "Toggle buttons for each log level (debug, info, warn, error)"
+        - "Clear logs button"
+        - "Pause/resume streaming toggle"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/output/LogFilter.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase3/log-filter-code.txt"
+
+    - plan_id: "03-03"
+      description: "Create OrchestratorSelector component"
+      acceptance_criteria:
+        - "Dropdown shows currently selected orchestrator"
+        - "Lists all running orchestrators"
+        - "Selecting changes log stream"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/output/OrchestratorSelector.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase3/orchestrator-selector-code.txt"
+
+    - plan_id: "03-04"
+      description: "Create LogList component with WebSocket"
+      acceptance_criteria:
+        - "Virtualized list for performance"
+        - "Connects to WebSocket for real-time logs"
+        - "Auto-scroll follows new logs"
+        - "Scroll-lock pauses auto-scroll when user scrolls up"
+        - "Connection status indicator"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/output/LogList.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase3/log-list-code.txt"
+
+    - plan_id: "03-05"
+      description: "Implement Output Viewer screen"
+      acceptance_criteria:
+        - "OrchestratorSelector at top"
+        - "LogFilter controls visible"
+        - "LogList displays logs"
+        - "Filter toggles work correctly"
+        - "Connection status shown"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cd ralph-mobile && npx expo run:ios"
+          - "xcrun simctl io booted screenshot validation-evidence/mobile-phase3/output-viewer.png"
+        evidence_required:
+          - "validation-evidence/mobile-phase3/output-viewer.png"
+
+  phase_validation:
+    type: "functional"
+    command: "xcrun simctl io booted screenshot validation-evidence/mobile-phase3/phase3-complete.png"
+    evidence_directory: "validation-evidence/mobile-phase3/"
+    expected_files:
+      - "log-entry-code.txt"
+      - "log-filter-code.txt"
+      - "orchestrator-selector-code.txt"
+      - "log-list-code.txt"
+      - "output-viewer.png"
+    expected_result: "Output viewer with mixed log levels streaming (or simulated logs if no backend)"
+
+# ============================================================================
+# PHASE 4: CONTROL PANEL SCREEN
+# ============================================================================
+phase_04:
+  name: "Control Panel Screen"
+  goal: "Provide start/stop/pause/resume controls with haptic feedback"
+  plans:
+    - plan_id: "04-01"
+      description: "Create ControlButtons component"
+      acceptance_criteria:
+        - "Start button (when stopped/none)"
+        - "Pause button (when running)"
+        - "Resume button (when paused)"
+        - "Stop button (when running/paused)"
+        - "Buttons disabled when action not applicable"
+        - "Confirmation dialogs for destructive actions"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/controls/ControlButtons.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase4/control-buttons-code.txt"
+
+    - plan_id: "04-02"
+      description: "Create NewOrchestrationForm component"
+      acceptance_criteria:
+        - "Prompt file input field"
+        - "Max iterations input (number)"
+        - "Max runtime input (seconds)"
+        - "Start button with validation"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/controls/NewOrchestrationForm.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase4/new-orchestration-form-code.txt"
+
+    - plan_id: "04-03"
+      description: "Create CurrentStatus component"
+      acceptance_criteria:
+        - "Large status indicator"
+        - "Progress ring/bar visualization"
+        - "ETA based on iteration rate"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/controls/CurrentStatus.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase4/current-status-code.txt"
+
+    - plan_id: "04-04"
+      description: "Create ActionHistory component"
+      acceptance_criteria:
+        - "Displays timestamp, action, result"
+        - "Limited to last 10 actions"
+        - "Auto-updates on new actions"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/controls/ActionHistory.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase4/action-history-code.txt"
+
+    - plan_id: "04-05"
+      description: "Implement Control Panel screen with haptics"
+      acceptance_criteria:
+        - "Haptic feedback on button press (Success/Warning/Error)"
+        - "Loading state during API calls"
+        - "Error toast on action failure"
+        - "All control buttons visible and functional"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cd ralph-mobile && npx expo run:ios"
+          - "xcrun simctl io booted screenshot validation-evidence/mobile-phase4/control-panel.png"
+        evidence_required:
+          - "validation-evidence/mobile-phase4/control-panel.png"
+
+  phase_validation:
+    type: "functional"
+    command: "xcrun simctl io booted screenshot validation-evidence/mobile-phase4/phase4-complete.png"
+    evidence_directory: "validation-evidence/mobile-phase4/"
+    expected_files:
+      - "control-buttons-code.txt"
+      - "new-orchestration-form-code.txt"
+      - "current-status-code.txt"
+      - "action-history-code.txt"
+      - "control-panel.png"
+    expected_result: "Control panel with active orchestration and all buttons visible"
+
+# ============================================================================
+# PHASE 5: ORCHESTRATOR DETAIL VIEW
+# ============================================================================
+phase_05:
+  name: "Orchestrator Detail View"
+  goal: "Deep-dive into single orchestrator with metrics, tasks, and quick actions"
+  plans:
+    - plan_id: "05-01"
+      description: "Create Detail Header component"
+      acceptance_criteria:
+        - "Displays orchestrator name and ID"
+        - "Displays created timestamp"
+        - "Large status badge"
+        - "Quick action buttons (stop/pause)"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/detail/Header.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase5/header-code.txt"
+
+    - plan_id: "05-02"
+      description: "Create MetricsGrid component"
+      acceptance_criteria:
+        - "Iterations: completed / total"
+        - "Tokens Used: formatted with K/M suffix"
+        - "Duration: elapsed time"
+        - "Success Rate: percentage"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/detail/MetricsGrid.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase5/metrics-grid-code.txt"
+
+    - plan_id: "05-03"
+      description: "Create ProgressSection component"
+      acceptance_criteria:
+        - "Circular or linear progress indicator"
+        - "Current phase/iteration label"
+        - "ETA calculation and display"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/detail/ProgressSection.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase5/progress-section-code.txt"
+
+    - plan_id: "05-04"
+      description: "Create TaskList component"
+      acceptance_criteria:
+        - "Displays task name, status, duration"
+        - "Expandable for output/error"
+        - "Scrollable if many tasks"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/detail/TaskList.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase5/task-list-code.txt"
+
+    - plan_id: "05-05"
+      description: "Create ConfigurationInfo component"
+      acceptance_criteria:
+        - "Displays prompt file path"
+        - "Displays config file path"
+        - "Displays parameters used"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/detail/ConfigurationInfo.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase5/configuration-info-code.txt"
+
+    - plan_id: "05-06"
+      description: "Implement Detail View screen"
+      acceptance_criteria:
+        - "Loads orchestrator by ID from route param"
+        - "All sections render correctly"
+        - "Quick actions work"
+        - "Back navigation returns to dashboard"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cd ralph-mobile && npx expo run:ios"
+          - "xcrun simctl io booted screenshot validation-evidence/mobile-phase5/detail-view.png"
+        evidence_required:
+          - "validation-evidence/mobile-phase5/detail-view.png"
+
+  phase_validation:
+    type: "functional"
+    command: "xcrun simctl io booted screenshot validation-evidence/mobile-phase5/phase5-complete.png"
+    evidence_directory: "validation-evidence/mobile-phase5/"
+    expected_files:
+      - "header-code.txt"
+      - "metrics-grid-code.txt"
+      - "progress-section-code.txt"
+      - "task-list-code.txt"
+      - "configuration-info-code.txt"
+      - "detail-view.png"
+    expected_result: "Detail view of running orchestrator with all sections visible"
+
+# ============================================================================
+# PHASE 6: SETTINGS SCREEN
+# ============================================================================
+phase_06:
+  name: "Settings Screen"
+  goal: "Configure server connection, manage preferences, display app info"
+  plans:
+    - plan_id: "06-01"
+      description: "Create ServerConnection component"
+      acceptance_criteria:
+        - "API URL input field (default: http://localhost:8420)"
+        - "WebSocket URL input field"
+        - "Test connection button with status indicator"
+        - "Save/reset buttons"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/settings/ServerConnection.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase6/server-connection-code.txt"
+
+    - plan_id: "06-02"
+      description: "Create Preferences component"
+      acceptance_criteria:
+        - "Auto-refresh interval selector (5s, 10s, 30s, 60s)"
+        - "Log buffer size selector (100, 500, 1000, unlimited)"
+        - "Haptic feedback toggle"
+        - "Dark mode toggle"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/settings/Preferences.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase6/preferences-code.txt"
+
+    - plan_id: "06-03"
+      description: "Create About component"
+      acceptance_criteria:
+        - "App version display"
+        - "Build number display"
+        - "Ralph server version (fetched)"
+        - "GitHub link"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/settings/About.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase6/about-code.txt"
+
+    - plan_id: "06-04"
+      description: "Implement AsyncStorage persistence"
+      acceptance_criteria:
+        - "Settings save to AsyncStorage"
+        - "Settings load on app start"
+        - "Default values for missing settings"
+        - "Reset to defaults works"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/stores/connection.ts"
+        evidence_required:
+          - "validation-evidence/mobile-phase6/storage-code.txt"
+
+    - plan_id: "06-05"
+      description: "Implement Settings screen"
+      acceptance_criteria:
+        - "All sections render"
+        - "Test connection shows success/failure"
+        - "Settings persist across app restarts"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cd ralph-mobile && npx expo run:ios"
+          - "xcrun simctl io booted screenshot validation-evidence/mobile-phase6/settings-view.png"
+        evidence_required:
+          - "validation-evidence/mobile-phase6/settings-view.png"
+
+  phase_validation:
+    type: "functional"
+    command: "xcrun simctl io booted screenshot validation-evidence/mobile-phase6/phase6-complete.png"
+    evidence_directory: "validation-evidence/mobile-phase6/"
+    expected_files:
+      - "server-connection-code.txt"
+      - "preferences-code.txt"
+      - "about-code.txt"
+      - "storage-code.txt"
+      - "settings-view.png"
+    expected_result: "Settings screen with server connection configured"
+
+# ============================================================================
+# PHASE 7: FINAL POLISH & VALIDATION
+# ============================================================================
+phase_07:
+  name: "Final Polish & Validation"
+  goal: "Add app icon, splash screen, error boundaries, performance optimization"
+  plans:
+    - plan_id: "07-01"
+      description: "Create app icon and splash screen"
+      acceptance_criteria:
+        - "Adaptive icon generated (1024x1024 source)"
+        - "Splash screen with logo configured"
+        - "Status bar style set"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "ls ralph-mobile/assets/"
+          - "cat ralph-mobile/app.json | grep -A10 splash"
+        evidence_required:
+          - "validation-evidence/mobile-phase7/assets-list.txt"
+          - "validation-evidence/mobile-phase7/app-config.txt"
+
+    - plan_id: "07-02"
+      description: "Implement error boundaries"
+      acceptance_criteria:
+        - "ErrorBoundary component created"
+        - "Graceful degradation on API failure"
+        - "Offline mode indicator"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cat ralph-mobile/components/ui/ErrorBoundary.tsx"
+        evidence_required:
+          - "validation-evidence/mobile-phase7/error-boundary-code.txt"
+
+    - plan_id: "07-03"
+      description: "Performance optimization"
+      acceptance_criteria:
+        - "Expensive components memoized"
+        - "FlatList rendering optimized"
+        - "Re-renders reduced with proper deps"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "grep -r 'memo\\|useMemo\\|useCallback' ralph-mobile/components/ | wc -l"
+        evidence_required:
+          - "validation-evidence/mobile-phase7/optimization-check.txt"
+
+    - plan_id: "07-04"
+      description: "Accessibility improvements"
+      acceptance_criteria:
+        - "AccessibilityLabel on all interactive elements"
+        - "Semantic headings used"
+        - "Color contrast sufficient"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "grep -r 'accessibilityLabel\\|accessible' ralph-mobile/components/ | wc -l"
+        evidence_required:
+          - "validation-evidence/mobile-phase7/accessibility-check.txt"
+
+    - plan_id: "07-05"
+      description: "Final validation sweep"
+      acceptance_criteria:
+        - "No TypeScript errors in build"
+        - "No console warnings in production build"
+        - "All previous phase criteria still pass"
+        - "App handles offline gracefully"
+        - "Performance smooth on scroll (60fps)"
+      validation_gate:
+        type: "real_execution"
+        commands:
+          - "cd ralph-mobile && npx expo run:ios --configuration Release"
+          - "xcrun simctl io booted screenshot validation-evidence/mobile-phase7/final-app.png"
+        evidence_required:
+          - "validation-evidence/mobile-phase7/final-app.png"
+          - "validation-evidence/mobile-phase7/release-build.txt"
+
+  phase_validation:
+    type: "functional"
+    command: "xcrun simctl io booted screenshot validation-evidence/mobile-phase7/phase7-complete.png"
+    evidence_directory: "validation-evidence/mobile-phase7/"
+    expected_files:
+      - "assets-list.txt"
+      - "app-config.txt"
+      - "error-boundary-code.txt"
+      - "optimization-check.txt"
+      - "accessibility-check.txt"
+      - "final-app.png"
+      - "release-build.txt"
+    expected_result: "Polished app with custom icon visible in simulator"
+
+# ============================================================================
+# GLOBAL SUCCESS CRITERIA
+# ============================================================================
+global_success_criteria:
+  - criterion: "Expo project builds without errors with npx expo run:ios"
+    verification: "Run build command and capture output"
+    evidence_type: "cli_output"
+    evidence_file: "validation-evidence/mobile-phase0/build-output.txt"
+
+  - criterion: "NativeWind classes apply correctly"
+    verification: "Screenshot showing styled components"
+    evidence_type: "screenshot"
+    evidence_file: "validation-evidence/mobile-phase0/tab-navigation.png"
+
+  - criterion: "Tab navigation renders with 4 tabs"
+    verification: "Screenshot showing Dashboard, Output, Controls, Settings tabs"
+    evidence_type: "screenshot"
+    evidence_file: "validation-evidence/mobile-phase0/tab-navigation.png"
+
+  - criterion: "All TypeScript types compile without errors"
+    verification: "Run npx tsc --noEmit and capture output"
+    evidence_type: "cli_output"
+    evidence_file: "validation-evidence/mobile-phase1/typescript-final.txt"
+
+  - criterion: "Dashboard displays orchestrator list"
+    verification: "Screenshot of dashboard with orchestrators or empty state"
+    evidence_type: "screenshot"
+    evidence_file: "validation-evidence/mobile-phase2/dashboard-view.png"
+
+  - criterion: "Logs stream in real-time via WebSocket"
+    verification: "Screenshot of output viewer with logs"
+    evidence_type: "screenshot"
+    evidence_file: "validation-evidence/mobile-phase3/output-viewer.png"
+
+  - criterion: "Control buttons work with haptic feedback"
+    verification: "Screenshot of control panel"
+    evidence_type: "screenshot"
+    evidence_file: "validation-evidence/mobile-phase4/control-panel.png"
+
+  - criterion: "Detail view shows all orchestrator information"
+    verification: "Screenshot of detail view with metrics"
+    evidence_type: "screenshot"
+    evidence_file: "validation-evidence/mobile-phase5/detail-view.png"
+
+  - criterion: "Settings persist and test connection works"
+    verification: "Screenshot of settings screen"
+    evidence_type: "screenshot"
+    evidence_file: "validation-evidence/mobile-phase6/settings-view.png"
+
+  - criterion: "App icon displays correctly in simulator"
+    verification: "Screenshot showing custom icon"
+    evidence_type: "screenshot"
+    evidence_file: "validation-evidence/mobile-phase7/final-app.png"
+
+# ============================================================================
+# VALIDATION SUMMARY
+# ============================================================================
+validation_summary:
+  total_phases: 8
+  total_plans: 40
+  total_evidence_files_required: 48
+  screenshot_evidence_count: 8
+  cli_output_evidence_count: 40
+
+  validation_approach: "REAL EXECUTION ONLY"
+
+  forbidden_methods:
+    - "npm test (runs mocked Jest tests)"
+    - "jest (mocked tests)"
+    - "vitest (mocked tests)"
+    - "Any unit test with jest.mock() or jest.fn()"
+
+  required_methods:
+    - "npx expo run:ios (real iOS Simulator build)"
+    - "xcrun simctl screenshot (real screenshot capture)"
+    - "npx tsc --noEmit (real TypeScript compilation)"
+    - "curl commands for API testing (if backend available)"
+
+  checkpoint_command: |
+    for phase in mobile-phase0 mobile-phase1 mobile-phase2 mobile-phase3 mobile-phase4 mobile-phase5 mobile-phase6 mobile-phase7; do
+      echo "$phase: $(ls validation-evidence/$phase 2>/dev/null | wc -l) files"
+    done
