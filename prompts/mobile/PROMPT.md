@@ -12,7 +12,7 @@
 
 ### Phase 1: Type Definitions & API Layer - IN PROGRESS
 - [x] Created lib/types/index.ts with all TypeScript types (OrchestratorStatus, OrchestratorMetrics, Orchestrator, LogEntry, Task, API request/response types, WebSocket types, Settings types)
-- [ ] Create lib/api/client.ts with REST API functions
+- [x] Created lib/api/client.ts with REST API functions (getOrchestrators, getOrchestrator, startOrchestrator, stopOrchestrator, pauseOrchestrator, resumeOrchestrator, getOrchestratorLogs, getOrchestratorTasks, testConnection, setBaseUrl, getBaseUrl)
 - [ ] Create lib/api/websocket.ts with WebSocket class
 - [ ] Create lib/hooks/ with React Query hooks
 - [ ] Validate full TypeScript compilation
