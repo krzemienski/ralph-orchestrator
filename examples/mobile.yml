@@ -1,11 +1,35 @@
-# Mobile test configuration for ralph-orchestrator validation
-# Simple config to test subagent spawning and timeout handling
+# Ralph Mobile - React Native Orchestrator Control App
+# Full build from scratch with iOS Simulator validation gates
+#
+# Run with: ralph run -c examples/mobile.yml
 
 agent: claude
 prompt_file: prompts/mobile/PROMPT.md
-max_iterations: 5
+max_iterations: 50
+orchestration: true
+
+# Working directory for the mobile app build
+working_directory: ./ralph-mobile
 
 adapters:
   claude:
     enabled: true
-    timeout: 600
+    timeout: 900  # 15 minutes per iteration (complex build phases)
+    model: claude-sonnet-4-20250514
+
+# Phase-based validation
+validation:
+  screenshot_required: true
+  evidence_directory: validation-evidence/mobile-{phase}/
+
+# MCP servers required for this orchestration
+mcp_servers:
+  - xc-mcp     # iOS Simulator control, screenshots
+  - shadcn-ui  # UI component reference (optional)
+
+# Success criteria
+success_criteria:
+  - All 8 phases completed
+  - Screenshots captured at each validation gate
+  - No TypeScript compilation errors
+  - App launches successfully on iOS Simulator
