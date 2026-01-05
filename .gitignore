@@ -70,3 +70,6 @@ site/
 PROMPT.md
 /.prompts
 /.serena
+/apps
+/archive
+/.agent
