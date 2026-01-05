@@ -10,12 +10,23 @@
 - [x] Tab navigation renders with 4 tabs (Dashboard, Output, Controls, Settings)
 - [x] TanStack Query Provider wraps app in root layout
 
-### Phase 1: Type Definitions & API Layer - IN PROGRESS
+### Phase 1: Type Definitions & API Layer - COMPLETE
 - [x] Created lib/types/index.ts with all TypeScript types (OrchestratorStatus, OrchestratorMetrics, Orchestrator, LogEntry, Task, API request/response types, WebSocket types, Settings types)
 - [x] Created lib/api/client.ts with REST API functions (getOrchestrators, getOrchestrator, startOrchestrator, stopOrchestrator, pauseOrchestrator, resumeOrchestrator, getOrchestratorLogs, getOrchestratorTasks, testConnection, setBaseUrl, getBaseUrl)
 - [x] Created lib/api/websocket.ts with OrchestratorWebSocket class (connect/disconnect, auto-reconnection with exponential backoff, typed callbacks for log/status_change/metrics_update, connection state management, singleton instance)
-- [ ] Create lib/hooks/ with React Query hooks
-- [ ] Validate full TypeScript compilation
+- [x] Created lib/hooks/ with React Query hooks (useOrchestrators, useOrchestrator, useOrchestratorLogs, useOrchestratorMutations, useConnection)
+- [x] Validated full TypeScript compilation (0 errors)
+
+### Phase 2: Dashboard Screen - COMPLETE
+- [x] Created components/ui/StatusBadge.tsx (color-coded status with 3 size variants)
+- [x] Created components/dashboard/MetricsSummary.tsx (iterations/tokens/duration display)
+- [x] Created components/dashboard/OrchestratorCard.tsx (card with progress bar, status, navigation)
+- [x] Created components/dashboard/EmptyState.tsx (friendly empty state with navigation)
+- [x] Updated app/(tabs)/index.tsx with FlatList, pull-to-refresh, loading/error/empty states
+- [x] Created app/orchestrator/[id].tsx placeholder for Phase 3 navigation
+- [x] Validated TypeScript compilation (0 errors)
+
+### Phase 3: Output Viewer Screen - PENDING
 
 ---
 
