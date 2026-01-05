@@ -3,3 +3,4 @@
  */
 
 export { StatusBadge } from './StatusBadge';
+export { ErrorBoundary } from './ErrorBoundary';

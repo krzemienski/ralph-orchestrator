@@ -43,11 +43,18 @@ export default function DashboardScreen(): React.JSX.Element {
   // Error state
   if (error && orchestrators.length === 0) {
     return (
-      <View className="flex-1 bg-background items-center justify-center p-8">
+      <View
+        className="flex-1 bg-background items-center justify-center p-8"
+        accessibilityRole="alert"
+        accessibilityLabel="Connection error occurred"
+      >
         <View className="w-16 h-16 rounded-full bg-red-500/20 items-center justify-center mb-4">
-          <Text className="text-3xl">⚠️</Text>
+          <Text className="text-3xl" accessibilityLabel="Warning icon">⚠️</Text>
         </View>
-        <Text className="text-lg font-medium text-textPrimary text-center mb-2">
+        <Text
+          className="text-lg font-medium text-textPrimary text-center mb-2"
+          accessibilityRole="header"
+        >
           Connection Error
         </Text>
         <Text className="text-sm text-textSecondary text-center mb-6">
@@ -56,6 +63,9 @@ export default function DashboardScreen(): React.JSX.Element {
         <Pressable
           onPress={handleRefresh}
           className="bg-blue-500 px-6 py-3 rounded-lg active:opacity-80"
+          accessibilityRole="button"
+          accessibilityLabel="Retry connection"
+          accessibilityHint="Attempts to reconnect to the server"
         >
           <Text className="text-white font-semibold">Retry</Text>
         </Pressable>
@@ -74,10 +84,15 @@ export default function DashboardScreen(): React.JSX.Element {
 
   // List view
   return (
-    <View className="flex-1 bg-background">
+    <View className="flex-1 bg-background" accessibilityLabel="Dashboard screen">
       {/* Header */}
       <View className="px-4 pt-4 pb-2">
-        <Text className="text-2xl font-bold text-textPrimary">Dashboard</Text>
+        <Text
+          className="text-2xl font-bold text-textPrimary"
+          accessibilityRole="header"
+        >
+          Dashboard
+        </Text>
         <Text className="text-sm text-textSecondary mt-1">
           {orchestrators.length} orchestrator{orchestrators.length !== 1 ? 's' : ''}
         </Text>
@@ -95,9 +110,21 @@ export default function DashboardScreen(): React.JSX.Element {
             onRefresh={handleRefresh}
             tintColor="#3b82f6"
             colors={['#3b82f6']}
+            accessibilityLabel="Pull to refresh orchestrators"
           />
         }
         showsVerticalScrollIndicator={false}
+        accessibilityLabel="List of orchestrators"
+        accessibilityHint="Pull down to refresh"
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        initialNumToRender={8}
+        getItemLayout={(_, index) => ({
+          length: 100,
+          offset: 100 * index,
+          index,
+        })}
       />
     </View>
   );
