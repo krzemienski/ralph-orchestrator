@@ -2,12 +2,21 @@
 
 ---
 
-## ⚠️ STATUS: REQUIRES RE-IMPLEMENTATION
+## ⚠️ STATUS: VALIDATION PROPOSAL COMPLETE - AWAITING IMPLEMENTATION
 
 **Issue Identified (January 6, 2026):** Previous implementation claims were not verified.
 - The `ralph-mobile` directory does NOT exist
 - No validation evidence files exist in `validation-evidence/mobile-phase*/`
 - Project must be built from scratch with proper evidence collection
+
+**Validation Proposal Created (January 6, 2026):**
+- Created `COMPREHENSIVE_ACCEPTANCE_CRITERIA.yaml` with real execution validation
+- Created evidence directory structure: `validation-evidence/mobile-phase{0-7}/`
+- Defined 44+ evidence files required (8 screenshots + CLI outputs)
+- FORBIDDEN: Unit tests with mocks (npm test, jest, vitest)
+- REQUIRED: iOS Simulator screenshots, npx expo run:ios, npx tsc --noEmit
+
+**NEXT ITERATION:** Begin Phase 0 - Create Expo project with `npx create-expo-app`
 
 ---
 
