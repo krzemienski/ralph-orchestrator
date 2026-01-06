@@ -25,8 +25,8 @@
 - [x] TanStack Query Provider wraps app in root layout ✅
 - **Evidence:** `validation-evidence/mobile-phase0/tab-navigation.png` ✅
 
-### Phase 1: Type Definitions & API Layer - NOT STARTED
-- [ ] Create lib/types/index.ts with all TypeScript types
+### Phase 1: Type Definitions & API Layer - IN PROGRESS
+- [x] Create lib/types/index.ts with all TypeScript types ✅
 - [ ] Create lib/api/client.ts with REST API functions
 - [ ] Create lib/api/websocket.ts with OrchestratorWebSocket class
 - [ ] Create lib/hooks/ with React Query hooks
