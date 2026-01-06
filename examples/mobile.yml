@@ -4,9 +4,9 @@ prompt_file: prompts/mobile/PROMPT.md
 
 # Resource limits - generous for complex development tasks
 max_iterations: 300
-max_runtime: 24400  # 4 hours
+max_runtime: 244000  # 4 hours
 max_tokens: 20000000   # 20M tokens for long sessions
-max_cost: 100.0        # $100 budget
+max_cost: 1000.0        # $100 budget
 context_window: 200000
 context_threshold: 0.95
 
