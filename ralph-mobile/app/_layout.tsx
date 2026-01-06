@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ErrorBoundary } from '../components/ui/ErrorBoundary';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -16,10 +17,11 @@ const queryClient = new QueryClient({
 
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <SafeAreaProvider>
-        <StatusBar style="light" />
-        <Stack
+    <ErrorBoundary errorTitle="Ralph Mobile Error">
+      <QueryClientProvider client={queryClient}>
+        <SafeAreaProvider>
+          <StatusBar style="light" />
+          <Stack
           screenOptions={{
             headerStyle: {
               backgroundColor: '#0a0a0a',
@@ -41,8 +43,9 @@ export default function RootLayout() {
               presentation: 'card',
             }}
           />
-        </Stack>
-      </SafeAreaProvider>
-    </QueryClientProvider>
+          </Stack>
+        </SafeAreaProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
