@@ -28,7 +28,7 @@
 ### Phase 1: Type Definitions & API Layer - IN PROGRESS
 - [x] Create lib/types/index.ts with all TypeScript types ✅
 - [x] Create lib/api/client.ts with REST API functions ✅
-- [ ] Create lib/api/websocket.ts with OrchestratorWebSocket class
+- [x] Create lib/api/websocket.ts with OrchestratorWebSocket class ✅
 - [ ] Create lib/hooks/ with React Query hooks
 - [ ] Validate full TypeScript compilation (0 errors)
 - **Evidence Required:** `validation-evidence/mobile-phase1/typescript-final.txt`
