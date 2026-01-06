@@ -27,7 +27,7 @@
 
 ### Phase 1: Type Definitions & API Layer - IN PROGRESS
 - [x] Create lib/types/index.ts with all TypeScript types ✅
-- [ ] Create lib/api/client.ts with REST API functions
+- [x] Create lib/api/client.ts with REST API functions ✅
 - [ ] Create lib/api/websocket.ts with OrchestratorWebSocket class
 - [ ] Create lib/hooks/ with React Query hooks
 - [ ] Validate full TypeScript compilation (0 errors)
