@@ -1,0 +1,22 @@
+total 8
+-rw-------   1 nick  staff  1252 Jan  6 16:46 _layout.tsx
+drwxr-xr-x   5 nick  staff   160 Jan  6 16:46 .
+drwxr-xr-x  20 nick  staff   640 Jan  6 16:46 ..
+drwxr-xr-x   7 nick  staff   224 Jan  6 16:47 (tabs)
+drwxr-xr-x   3 nick  staff    96 Jan  6 16:47 orchestrator
+
+app/(tabs):
+total 40
+-rw-------  1 nick  staff  2099 Jan  6 16:46 _layout.tsx
+drwxr-xr-x  7 nick  staff   224 Jan  6 16:47 .
+drwxr-xr-x  5 nick  staff   160 Jan  6 16:46 ..
+-rw-------  1 nick  staff  2163 Jan  6 16:47 controls.tsx
+-rw-------  1 nick  staff  1729 Jan  6 16:47 index.tsx
+-rw-------  1 nick  staff  1820 Jan  6 16:47 output.tsx
+-rw-------  1 nick  staff  2456 Jan  6 16:47 settings.tsx
+
+app/orchestrator:
+total 8
+drwxr-xr-x  3 nick  staff    96 Jan  6 16:47 .
+drwxr-xr-x  5 nick  staff   160 Jan  6 16:46 ..
+-rw-------  1 nick  staff  1133 Jan  6 16:47 [id].tsx
