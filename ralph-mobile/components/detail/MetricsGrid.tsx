@@ -99,7 +99,11 @@ export function MetricsGrid({ metrics }: MetricsGridProps): React.ReactElement {
 
       <View style={styles.grid}>
         {/* Iterations */}
-        <View style={styles.metricCard}>
+        <View
+          style={styles.metricCard}
+          accessibilityLabel={`Iterations: ${iterations_completed} of ${iterations_total} completed, ${iterationProgress}% progress`}
+          accessibilityRole="text"
+        >
           <Text style={styles.metricValue}>
             {iterations_completed}
             <Text style={styles.metricTotal}>/{iterations_total}</Text>
@@ -119,7 +123,11 @@ export function MetricsGrid({ metrics }: MetricsGridProps): React.ReactElement {
         </View>
 
         {/* Tokens */}
-        <View style={styles.metricCard}>
+        <View
+          style={styles.metricCard}
+          accessibilityLabel={`Tokens used: ${tokens_used.toLocaleString()}`}
+          accessibilityRole="text"
+        >
           <Text style={styles.metricValue}>{formatNumber(tokens_used)}</Text>
           <Text style={styles.metricLabel}>Tokens Used</Text>
           <Text style={styles.metricSubtext}>
@@ -128,7 +136,11 @@ export function MetricsGrid({ metrics }: MetricsGridProps): React.ReactElement {
         </View>
 
         {/* Duration */}
-        <View style={styles.metricCard}>
+        <View
+          style={styles.metricCard}
+          accessibilityLabel={`Duration: ${formatDuration(duration_seconds)}, ${Math.round(duration_seconds)} seconds elapsed`}
+          accessibilityRole="text"
+        >
           <Text style={styles.metricValue}>
             {formatDuration(duration_seconds)}
           </Text>
@@ -139,7 +151,11 @@ export function MetricsGrid({ metrics }: MetricsGridProps): React.ReactElement {
         </View>
 
         {/* Success Rate */}
-        <View style={styles.metricCard}>
+        <View
+          style={styles.metricCard}
+          accessibilityLabel={`Success rate: ${Math.round(success_rate * 100)} percent`}
+          accessibilityRole="text"
+        >
           <Text
             style={[
               styles.metricValue,

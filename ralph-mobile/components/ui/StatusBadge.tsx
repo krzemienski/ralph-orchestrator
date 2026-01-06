@@ -118,6 +118,8 @@ export function StatusBadge({
           borderRadius: config.borderRadius,
         },
       ]}
+      accessibilityLabel={`Status: ${displayLabel}`}
+      accessibilityRole="text"
     >
       {/* Status indicator dot with optional pulse */}
       <Animated.View
