@@ -2,7 +2,7 @@
 
 ---
 
-## ✅ STATUS: PHASE 0 COMPLETE - PHASE 1 IN PROGRESS
+## ✅ STATUS: PHASES 0-1 COMPLETE - PHASE 2 NEXT
 
 **Phase 0 Completed (January 6, 2026):**
 - ✅ Created Expo project with TypeScript template
@@ -12,7 +12,19 @@
 - ✅ Built and ran on iOS Simulator: `npx expo run:ios` succeeded
 - ✅ Screenshot evidence captured: `validation-evidence/mobile-phase0/tab-navigation.png`
 
-**NEXT ITERATION:** Begin Phase 1 - Create TypeScript type definitions and API layer
+**Phase 1 Completed (January 6, 2026):**
+- ✅ Created lib/types/index.ts with all TypeScript types
+- ✅ Created lib/api/client.ts with REST API functions
+- ✅ Created lib/api/websocket.ts with OrchestratorWebSocket class
+- ✅ Created lib/hooks/ with React Query hooks (4 files):
+  - useOrchestrators.ts - List all orchestrators with polling
+  - useOrchestrator.ts - Single orchestrator with tasks
+  - useOrchestratorLogs.ts - Log fetching with infinite scroll
+  - useOrchestratorMutations.ts - Start/stop/pause/resume mutations
+- ✅ TypeScript compilation validated: 0 errors (`npx tsc --noEmit`)
+- ✅ Evidence captured: `validation-evidence/mobile-phase1/`
+
+**NEXT ITERATION:** Begin Phase 2 - Create Dashboard Screen components
 
 ---
 
@@ -25,13 +37,13 @@
 - [x] TanStack Query Provider wraps app in root layout ✅
 - **Evidence:** `validation-evidence/mobile-phase0/tab-navigation.png` ✅
 
-### Phase 1: Type Definitions & API Layer - IN PROGRESS
+### Phase 1: Type Definitions & API Layer - ✅ COMPLETE
 - [x] Create lib/types/index.ts with all TypeScript types ✅
 - [x] Create lib/api/client.ts with REST API functions ✅
 - [x] Create lib/api/websocket.ts with OrchestratorWebSocket class ✅
-- [ ] Create lib/hooks/ with React Query hooks
-- [ ] Validate full TypeScript compilation (0 errors)
-- **Evidence Required:** `validation-evidence/mobile-phase1/typescript-final.txt`
+- [x] Create lib/hooks/ with React Query hooks ✅
+- [x] Validate full TypeScript compilation (0 errors) ✅
+- **Evidence:** `validation-evidence/mobile-phase1/typescript-final.txt` ✅
 
 ### Phase 2: Dashboard Screen - NOT STARTED
 - [ ] Create components/ui/StatusBadge.tsx
