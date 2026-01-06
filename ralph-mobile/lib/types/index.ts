@@ -30,6 +30,16 @@ export interface OrchestratorMetrics {
 }
 
 /**
+ * Orchestrator configuration settings
+ */
+export interface OrchestratorConfig {
+  prompt: string;
+  model: string;
+  max_iterations: number;
+  timeout_seconds: number;
+}
+
+/**
  * Main orchestrator entity
  */
 export interface Orchestrator {
@@ -38,6 +48,7 @@ export interface Orchestrator {
   status: OrchestratorStatus;
   prompt_file: string;
   config_file: string;
+  config: OrchestratorConfig;
   metrics: OrchestratorMetrics;
   created_at: string;
   updated_at: string;
@@ -83,10 +94,12 @@ export interface Task {
   orchestrator_id: string;
   name: string;
   status: TaskStatus;
-  started_at?: string;
-  completed_at?: string;
+  iteration_number: number;
+  started_at: string | null;
+  completed_at: string | null;
   output?: string;
   error?: string;
+  error_message?: string;
 }
 
 // =============================================================================
