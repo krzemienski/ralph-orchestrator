@@ -5,6 +5,20 @@ jest.mock("expo-secure-store", () => ({
   deleteItemAsync: jest.fn(),
 }));
 
+// Mock expo-notifications for tests
+jest.mock("expo-notifications", () => ({
+  requestPermissionsAsync: jest.fn(),
+  getPermissionsAsync: jest.fn(),
+  scheduleNotificationAsync: jest.fn(),
+  cancelScheduledNotificationAsync: jest.fn(),
+  cancelAllScheduledNotificationsAsync: jest.fn(),
+  setNotificationHandler: jest.fn(),
+  addNotificationReceivedListener: jest.fn(),
+  addNotificationResponseReceivedListener: jest.fn(),
+  setBadgeCountAsync: jest.fn(),
+  getBadgeCountAsync: jest.fn(),
+}));
+
 // Mock WebSocket for tests
 global.WebSocket = class MockWebSocket {
   static CONNECTING = 0;
