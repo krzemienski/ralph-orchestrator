@@ -5,6 +5,33 @@ jest.mock("expo-secure-store", () => ({
   deleteItemAsync: jest.fn(),
 }));
 
+// Mock expo-task-manager for tests
+jest.mock("expo-task-manager", () => ({
+  defineTask: jest.fn(),
+  isTaskRegisteredAsync: jest.fn(),
+  unregisterTaskAsync: jest.fn(),
+  isAvailableAsync: jest.fn(),
+  TaskManagerTaskBody: {},
+}));
+
+// Mock expo-background-fetch for tests
+jest.mock("expo-background-fetch", () => ({
+  registerTaskAsync: jest.fn(),
+  unregisterTaskAsync: jest.fn(),
+  getStatusAsync: jest.fn(),
+  setMinimumIntervalAsync: jest.fn(),
+  BackgroundFetchStatus: {
+    Available: 3,
+    Restricted: 1,
+    Denied: 2,
+  },
+  BackgroundFetchResult: {
+    NewData: 2,
+    NoData: 1,
+    Failed: 3,
+  },
+}));
+
 // Mock expo-notifications for tests
 jest.mock("expo-notifications", () => ({
   requestPermissionsAsync: jest.fn(),
