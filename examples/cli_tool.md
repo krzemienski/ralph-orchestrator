@@ -98,3 +98,19 @@ The orchestrator will continue iterations until all components are implemented a
 - [x] Total tests: 33 passing (9 base + 11 config + 13 backup)
 
 **Next iteration:** Implement organizers/document_organizer.py
+
+### Iteration 4 - COMPLETE
+**Task:** Implement document organizer module
+
+**Completed:**
+- [x] Implemented `organizers/document_organizer.py` with:
+  - `DocumentOrganizer` class extending `BaseOrganizer`
+  - `DEFAULT_DOCUMENT_EXTENSIONS` dictionary for common file types
+  - Support for custom extension-to-folder mappings
+  - Extension-based folder organization (pdf/, docx/, txt/, etc.)
+  - Filters to only process document file types
+- [x] Wrote TDD tests (15 passing tests)
+- [x] Updated `organizers/__init__.py` with exports
+- [x] Total tests: 48 passing (9 base + 11 config + 13 backup + 15 document)
+
+**Next iteration:** Implement organizers/photo_organizer.py
