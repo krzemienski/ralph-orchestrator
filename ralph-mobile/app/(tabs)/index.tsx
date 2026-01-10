@@ -1,282 +1,274 @@
-/**
- * Dashboard Screen
- *
- * Main screen displaying list of orchestrators with real-time status updates.
- * Features:
- * - FlatList for efficient rendering of orchestrator cards
- * - Pull-to-refresh for manual data reload
- * - Loading, empty, and error states
- * - Navigation to detail view on card tap
- */
+import { View, Text, ScrollView, RefreshControl } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import { useState, useCallback, useMemo, memo } from "react";
+import { AnimatedCard, SessionCardSkeleton, FadeIn } from "../../components";
 
-import React, { useCallback } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  ActivityIndicator,
-  Pressable,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { useOrchestrators } from '../../lib/hooks/useOrchestrators';
-import { OrchestratorCard } from '../../components/dashboard/OrchestratorCard';
-import { EmptyState } from '../../components/dashboard/EmptyState';
-import type { Orchestrator } from '../../lib/types';
+// Mock data for development
+const mockSessions = [
+  {
+    id: "session-001",
+    name: "Feature Implementation",
+    status: "running",
+    progress: 45,
+    currentIteration: 5,
+    totalIterations: 12,
+    startedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+  },
+  {
+    id: "session-002",
+    name: "Bug Fix Sprint",
+    status: "completed",
+    progress: 100,
+    currentIteration: 8,
+    totalIterations: 8,
+    startedAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+  },
+  {
+    id: "session-003",
+    name: "Refactoring Task",
+    status: "paused",
+    progress: 30,
+    currentIteration: 3,
+    totalIterations: 10,
+    startedAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+  },
+];
 
-/**
- * Theme colors for dark mode
- */
-const colors = {
-  background: '#0a0a0a',
-  surface: '#1a1a1a',
-  border: '#333333',
-  info: '#3b82f6',
-  white: '#ffffff',
-  gray400: '#9ca3af',
-  gray500: '#6b7280',
-  error: '#ef4444',
-  errorDim: '#ef444420',
+type SessionStatus = "running" | "completed" | "paused" | "failed";
+
+function getStatusColor(status: SessionStatus): string {
+  switch (status) {
+    case "running":
+      return "bg-emerald-500";
+    case "completed":
+      return "bg-indigo-500";
+    case "paused":
+      return "bg-amber-500";
+    case "failed":
+      return "bg-red-500";
+    default:
+      return "bg-slate-500";
+  }
+}
+
+function getStatusText(status: SessionStatus): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function formatTimeAgo(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+
+  if (diffMins < 60) {
+    return `${diffMins}m ago`;
+  }
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  }
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+// Session type for memoized component
+type Session = {
+  id: string;
+  name: string;
+  status: string;
+  progress: number;
+  currentIteration: number;
+  totalIterations: number;
+  startedAt: string;
 };
 
-/**
- * DashboardScreen - Main screen showing all orchestrators
- *
- * Uses FlatList for performance with large lists:
- * - Pull-to-refresh triggers data reload
- * - Automatic polling every 10 seconds
- * - Loading spinner during initial fetch
- * - Empty state when no orchestrators exist
- * - Error state with retry button on API failure
- */
-export default function DashboardScreen() {
-  const router = useRouter();
-  const {
-    data: orchestrators,
-    isLoading,
-    isError,
-    error,
-    refetch,
-    isRefetching,
-  } = useOrchestrators(10000); // Poll every 10 seconds
+// Memoized session card component for performance
+const SessionCard = memo(function SessionCard({
+  session,
+  index,
+  onPress,
+}: {
+  session: Session;
+  index: number;
+  onPress: () => void;
+}) {
+  return (
+    <AnimatedCard
+      index={index}
+      staggerDelay={80}
+      pressable
+      onPress={onPress}
+      style={{
+        backgroundColor: "#1e293b",
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+      }}
+    >
+      {/* Session Header */}
+      <View className="flex-row items-center justify-between mb-3">
+        <Text className="text-white font-semibold text-lg flex-1">
+          {session.name}
+        </Text>
+        <View className={`px-2 py-1 rounded-full ${getStatusColor(session.status as SessionStatus)}`}>
+          <Text className="text-white text-xs font-medium">
+            {getStatusText(session.status as SessionStatus)}
+          </Text>
+        </View>
+      </View>
 
-  /**
-   * Handle pull-to-refresh action
-   */
-  const handleRefresh = useCallback(() => {
-    refetch();
-  }, [refetch]);
+      {/* Progress Bar */}
+      <View className="h-2 bg-slate-700 rounded-full mb-2">
+        <View
+          className={`h-2 rounded-full ${getStatusColor(session.status as SessionStatus)}`}
+          style={{ width: `${session.progress}%` }}
+        />
+      </View>
 
-  /**
-   * Navigate to controls tab to start new orchestration
-   */
-  const handleStartNew = useCallback(() => {
-    router.push('/(tabs)/controls');
-  }, [router]);
-
-  /**
-   * Render individual orchestrator card
-   */
-  const renderItem = useCallback(
-    ({ item }: { item: Orchestrator }) => (
-      <OrchestratorCard orchestrator={item} />
-    ),
-    []
-  );
-
-  /**
-   * Extract unique key for each item
-   */
-  const keyExtractor = useCallback(
-    (item: Orchestrator) => item.id,
-    []
-  );
-
-  /**
-   * List header component with title
-   */
-  const ListHeader = useCallback(
-    () => (
-      <View style={styles.headerSection}>
-        <Text style={styles.title}>Dashboard</Text>
-        <Text style={styles.subtitle}>
-          {orchestrators && orchestrators.length > 0
-            ? `${orchestrators.length} orchestrator${orchestrators.length === 1 ? '' : 's'}`
-            : 'Pull to refresh'}
+      {/* Session Details */}
+      <View className="flex-row justify-between">
+        <Text className="text-slate-400 text-sm">
+          Iteration {session.currentIteration}/{session.totalIterations}
+        </Text>
+        <Text className="text-slate-400 text-sm">
+          {formatTimeAgo(session.startedAt)}
         </Text>
       </View>
-    ),
-    [orchestrators]
+    </AnimatedCard>
   );
+});
 
-  /**
-   * Empty state component
-   */
-  const ListEmpty = useCallback(
-    () => (
-      <EmptyState
-        title="No Orchestrators"
-        subtitle="Start a new orchestration to monitor your workflows"
-        actionText="Start New"
-        onAction={handleStartNew}
-      />
-    ),
-    [handleStartNew]
-  );
-
-  // Loading state - initial load
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.info} />
-          <Text style={styles.loadingText}>Loading orchestrators...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Error state with retry
-  if (isError) {
-    return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <View style={styles.errorContainer}>
-          <View style={styles.errorContent}>
-            <Text style={styles.errorTitle}>Connection Error</Text>
-            <Text style={styles.errorMessage}>
-              {error?.message || 'Unable to fetch orchestrators'}
-            </Text>
-            <Pressable
-              onPress={() => refetch()}
-              style={({ pressed }) => [
-                styles.retryButton,
-                pressed && styles.retryButtonPressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Retry loading orchestrators"
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </Pressable>
-          </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
+// Loading skeleton for dashboard
+function DashboardSkeleton() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <FlatList
-        data={orchestrators || []}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        ListHeaderComponent={ListHeader}
-        ListEmptyComponent={ListEmpty}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={handleRefresh}
-            tintColor={colors.info}
-            colors={[colors.info]}
-          />
-        }
-        // Performance optimizations
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        initialNumToRender={10}
-        getItemLayout={(_, index) => ({
-          length: CARD_HEIGHT,
-          offset: HEADER_HEIGHT + index * CARD_HEIGHT,
-          index,
-        })}
-        accessibilityLabel="Orchestrators list"
-        accessibilityHint="Pull down to refresh. Tap a card to view details."
-      />
-    </SafeAreaView>
+    <View className="py-4">
+      <View className="mb-3 h-4 w-32 bg-slate-700 rounded" />
+      <SessionCardSkeleton />
+      <SessionCardSkeleton />
+      <SessionCardSkeleton />
+    </View>
   );
 }
 
-/**
- * Estimated heights for getItemLayout optimization
- */
-const CARD_HEIGHT = 156; // Estimated card height including margin
-const HEADER_HEIGHT = 80; // Estimated header height
+export default function Dashboard() {
+  const router = useRouter();
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [sessions, setSessions] = useState<Session[]>([]);
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  listContent: {
-    padding: 16,
-    flexGrow: 1,
-  },
-  headerSection: {
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.white,
-    marginBottom: 4,
-  },
-  subtitle: {
-    color: colors.gray400,
-    fontSize: 14,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  loadingText: {
-    color: colors.gray400,
-    marginTop: 16,
-    fontSize: 15,
-  },
-  errorContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  errorContent: {
-    backgroundColor: colors.errorDim,
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
-    maxWidth: 300,
-  },
-  errorTitle: {
-    color: colors.error,
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  errorMessage: {
-    color: colors.gray400,
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  retryButton: {
-    backgroundColor: colors.error,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  retryButtonPressed: {
-    opacity: 0.8,
-  },
-  retryButtonText: {
-    color: colors.white,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-});
+  // Simulate initial data fetch
+  const fetchSessions = useCallback(async () => {
+    // In production: const response = await orchestratorApi.getSessions();
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    setSessions(mockSessions);
+    setLoading(false);
+  }, []);
+
+  // Initial load
+  useMemo(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchSessions();
+    setRefreshing(false);
+  }, [fetchSessions]);
+
+  // Memoize navigation callbacks to prevent re-renders
+  const handleSessionPress = useCallback(
+    (sessionId: string) => {
+      router.push(`/session/${sessionId}`);
+    },
+    [router]
+  );
+
+  return (
+    <SafeAreaView className="flex-1 bg-slate-900">
+      {/* Header */}
+      <FadeIn>
+        <View className="px-4 py-4 border-b border-slate-800">
+          <Text className="text-2xl font-bold text-white">Ralph Orchestrator</Text>
+          <Text className="text-slate-400 mt-1">Session Dashboard</Text>
+        </View>
+      </FadeIn>
+
+      {/* Session List */}
+      <ScrollView
+        className="flex-1 px-4"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#818cf8"
+          />
+        }
+      >
+        {loading ? (
+          <DashboardSkeleton />
+        ) : (
+          <View className="py-4">
+            <FadeIn delay={100}>
+              <Text className="text-slate-400 text-sm font-medium mb-3">
+                ACTIVE SESSIONS ({sessions.length})
+              </Text>
+            </FadeIn>
+
+            {sessions.map((session, index) => (
+              <SessionCard
+                key={session.id}
+                session={session}
+                index={index}
+                onPress={() => handleSessionPress(session.id)}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* Quick Actions */}
+        {!loading && (
+          <AnimatedCard
+            delay={sessions.length * 80 + 100}
+            style={{ paddingVertical: 16, borderTopWidth: 1, borderTopColor: "#1e293b" }}
+          >
+            <Text className="text-slate-400 text-sm font-medium mb-3">
+              QUICK ACTIONS
+            </Text>
+
+            <View className="flex-row gap-3">
+              <AnimatedCard
+                delay={sessions.length * 80 + 150}
+                pressable
+                style={{
+                  flex: 1,
+                  backgroundColor: "#4f46e5",
+                  borderRadius: 12,
+                  padding: 16,
+                  alignItems: "center",
+                }}
+              >
+                <Text className="text-white font-semibold">New Session</Text>
+              </AnimatedCard>
+              <AnimatedCard
+                delay={sessions.length * 80 + 200}
+                pressable
+                onPress={() => router.push("/(tabs)/logs")}
+                style={{
+                  flex: 1,
+                  backgroundColor: "#1e293b",
+                  borderRadius: 12,
+                  padding: 16,
+                  alignItems: "center",
+                }}
+              >
+                <Text className="text-white font-semibold">View Logs</Text>
+              </AnimatedCard>
+            </View>
+          </AnimatedCard>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

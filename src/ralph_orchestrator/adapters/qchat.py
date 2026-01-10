@@ -1,7 +1,19 @@
-# ABOUTME: Q Chat adapter implementation for q CLI tool
+# ABOUTME: Q Chat adapter implementation for q CLI tool (DEPRECATED)
 # ABOUTME: Provides integration with q chat command for AI interactions
+# ABOUTME: NOTE: Consider using KiroAdapter instead - Q CLI rebranded to Kiro CLI
 
-"""Q Chat adapter for Ralph Orchestrator."""
+"""Q Chat adapter for Ralph Orchestrator.
+
+.. deprecated::
+    The QChatAdapter is deprecated in favor of KiroAdapter.
+    Amazon Q Developer CLI has been rebranded to Kiro CLI (v1.20+).
+    Use `-a kiro` instead of `-a qchat` or `-a q` for new projects.
+
+    Migration guide:
+    - Config paths changed: ~/.aws/amazonq/ -> ~/.kiro/
+    - MCP servers: ~/.kiro/settings/mcp.json
+    - Project files: .kiro/ folder
+"""
 
 import subprocess
 import os
@@ -10,7 +22,11 @@ import signal
 import threading
 import asyncio
 import time
-import fcntl
+import warnings
+try:
+    import fcntl  # Unix-only
+except ModuleNotFoundError:
+    fcntl = None
 from .base import ToolAdapter, ToolResponse
 from ..logging_config import RalphLogger
 
@@ -19,9 +35,23 @@ logger = RalphLogger.get_logger(RalphLogger.ADAPTER_QCHAT)
 
 
 class QChatAdapter(ToolAdapter):
-    """Adapter for Q Chat CLI tool."""
-    
+    """Adapter for Q Chat CLI tool.
+
+    .. deprecated::
+        Use :class:`KiroAdapter` instead. The Amazon Q Developer CLI has been
+        rebranded to Kiro CLI. This adapter is maintained for backwards
+        compatibility only.
+    """
+
     def __init__(self):
+        # Emit deprecation warning
+        warnings.warn(
+            "QChatAdapter is deprecated. Use KiroAdapter instead. "
+            "Amazon Q Developer CLI has been rebranded to Kiro CLI (v1.20+). "
+            "Run with '-a kiro' instead of '-a qchat'.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         # Get configuration from environment variables
         self.command = os.getenv("RALPH_QCHAT_COMMAND", "q")
         self.default_timeout = int(os.getenv("RALPH_QCHAT_TIMEOUT", "600"))
@@ -358,16 +388,18 @@ class QChatAdapter(ToolAdapter):
 
     def _make_non_blocking(self, pipe):
         """Make a pipe non-blocking to prevent deadlock."""
-        if pipe:
-            try:
-                fd = pipe.fileno()
-                # Check if fd is a valid integer file descriptor
-                if isinstance(fd, int) and fd >= 0:
-                    flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-                    fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-            except (AttributeError, ValueError, OSError):
-                # In tests or when pipe doesn't support fileno()
-                pass
+        if not pipe or fcntl is None:
+            return
+
+        try:
+            fd = pipe.fileno()
+            if isinstance(fd, int) and fd >= 0:
+                flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+                fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+        except (AttributeError, ValueError, OSError):
+            # In tests or when pipe doesn't support fileno()
+            pass
+
     
     def _read_available(self, pipe):
         """Read available data from a non-blocking pipe."""

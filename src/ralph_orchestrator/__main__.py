@@ -9,13 +9,10 @@ import sys
 import os
 import json
 import shutil
-import socket
-import threading
-import webbrowser
 from pathlib import Path
 import logging
 import subprocess
-from typing import List, Optional
+from typing import List
 
 # Import the proper orchestrator with adapter support
 from .orchestrator import RalphOrchestrator
@@ -24,7 +21,8 @@ from .main import (
     DEFAULT_MAX_ITERATIONS, DEFAULT_MAX_RUNTIME, DEFAULT_PROMPT_FILE,
     DEFAULT_CHECKPOINT_INTERVAL, DEFAULT_RETRY_DELAY, DEFAULT_MAX_TOKENS,
     DEFAULT_MAX_COST, DEFAULT_CONTEXT_WINDOW, DEFAULT_CONTEXT_THRESHOLD,
-    DEFAULT_METRICS_INTERVAL, DEFAULT_MAX_PROMPT_SIZE
+    DEFAULT_METRICS_INTERVAL, DEFAULT_MAX_PROMPT_SIZE,
+    DEFAULT_COMPLETION_PROMISE
 )
 from .output import RalphConsole
 
@@ -32,92 +30,42 @@ from .output import RalphConsole
 _console = RalphConsole()
 
 
-def find_available_port(start_port: int = 8080, max_attempts: int = 100) -> int:
-    """Find an available port starting from start_port.
+def _apply_codex_shortcut(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """Apply --codex shortcut flags to ACP CLI args.
 
-    Args:
-        start_port: Port to start searching from
-        max_attempts: Maximum number of ports to try
+    --codex is a convenience flag equivalent to:
+      --agent acp --acp-agent codex-acp
 
-    Returns:
-        Available port number
-
-    Raises:
-        RuntimeError: If no available port found
+    It also defaults permission mode to interactive unless explicitly set.
     """
-    for port in range(start_port, start_port + max_attempts):
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(('127.0.0.1', port))
-                return port
-        except OSError:
-            continue
-    raise RuntimeError(f"No available port found in range {start_port}-{start_port + max_attempts}")
+    if not getattr(args, "codex", False):
+        return
 
+    # --codex implies ACP mode; reject conflicting explicit agent selection.
+    if getattr(args, "agent", "auto") not in ("auto", "acp"):
+        parser.error("--codex requires --agent auto or acp (or omit -a/--agent)")
 
-def start_web_monitor(
-    config: 'RalphConfig',
-    orchestrator: Optional['RalphOrchestrator'] = None
-) -> Optional[tuple]:
-    """Start the web monitoring server if enabled in config.
+    args.agent = "acp"
 
-    Args:
-        config: Ralph configuration with web settings
-        orchestrator: Optional orchestrator to monitor
+    if getattr(args, "acp_agent", None) is None:
+        args.acp_agent = "codex-acp"
 
-    Returns:
-        Tuple of (monitor, thread, port) if started, None otherwise
-    """
-    if not config.enable_web:
-        return None
+    if getattr(args, "acp_permission_mode", None) is None:
+        args.acp_permission_mode = getattr(args, "codex_permission_mode", None) or "interactive"
 
-    try:
-        from .web.server import WebMonitor
-    except ImportError as e:
-        _console.print_warning(f"Web monitoring not available: {e}")
-        return None
+    # Optionally push Codex config overrides into the ACP agent args (codex-acp supports -c key=value).
+    # Ensure agent_args exists (argparse.REMAINDER yields list, but keep it defensive).
+    if not hasattr(args, "agent_args") or args.agent_args is None:
+        args.agent_args = []
 
-    # Find available port if auto-discover requested
-    port = config.web_port
-    if port == 0:
-        port = find_available_port()
-        _console.print_info(f"Auto-selected port: {port}")
+    codex_model = getattr(args, "codex_model", None)
+    if codex_model:
+        args.agent_args.extend(["-c", f"model=\"{codex_model}\""])
 
-    # Create and start web monitor
-    monitor = WebMonitor(
-        port=port,
-        host=config.web_host,
-        enable_auth=not config.web_no_auth
-    )
-
-    # Start in background thread
-    import asyncio
-
-    def run_monitor():
-        try:
-            asyncio.run(monitor.run())
-        except Exception as e:
-            _console.print_error(f"Web monitor error: {e}")
-
-    thread = threading.Thread(target=run_monitor, daemon=True)
-    thread.start()
-
-    _console.print_success(f"Web monitoring dashboard started at http://{config.web_host}:{port}")
-    if config.web_no_auth:
-        _console.print_warning("Authentication disabled (--no-auth mode)")
-    else:
-        _console.print_info("Credentials: admin / ralph-admin-2024")
-
-    # Open browser if requested
-    if config.web_open_browser:
-        url = f"http://{config.web_host}:{port}"
-        try:
-            webbrowser.open(url)
-            _console.print_info(f"Opened browser to {url}")
-        except Exception as e:
-            _console.print_warning(f"Could not open browser: {e}")
-
-    return (monitor, thread, port)
+    codex_reasoning = getattr(args, "codex_reasoning_effort", None)
+    if codex_reasoning:
+        # Codex config key is `model_reasoning_effort` (NOT the ACP session config option id).
+        args.agent_args.extend(["-c", f"model_reasoning_effort=\"{codex_reasoning}\""])
 
 
 def init_project():
@@ -151,11 +99,9 @@ def init_project():
 - Tests pass
 - Code is clean
 
-## Completion
-When ALL requirements and success criteria are met, signal completion by writing on its own line:
-- [x] TASK_COMPLETE
-
-(Other accepted formats: `**TASK_COMPLETE**`, `Status: TASK_COMPLETE`, or standalone `TASK_COMPLETE`)
+## Completion Promise
+- When all success criteria are met, output this exact line:
+  LOOP_COMPLETE
 """)
         _console.print_success("Created PROMPT.md template")
     
@@ -164,19 +110,26 @@ When ALL requirements and success criteria are met, signal completion by writing
         with open("ralph.yml", "w") as f:
             f.write("""# Ralph Orchestrator Configuration
 agent: auto
+# Agent selection + fallback ordering (used when agent=auto, and for fallback order)
+# Valid values: acp, claude, gemini, qchat (aliases: codex->acp, q->qchat)
+agent_priority:
+  - claude
+  - kiro
+  - gemini
+  - qchat
+  - acp
 prompt_file: PROMPT.md
+completion_promise: "LOOP_COMPLETE"
 max_iterations: 100
 max_runtime: 14400
 verbose: false
 
-# Validation feature (Claude-only, opt-in)
-# When enabled, AI proposes a validation strategy before executing
-enable_validation: false
-validation_interactive: true  # Require user confirmation for validation
-
 # Adapter configurations
 adapters:
   claude:
+    enabled: true
+    timeout: 300
+  kiro:
     enabled: true
     timeout: 300
   q:
@@ -270,6 +223,163 @@ def clean_workspace():
         if response.lower() == 'y':
             subprocess.run(["git", "reset", "--hard", "HEAD"], capture_output=True)
             _console.print_success("Reset to last checkpoint")
+
+
+def run_diagnostics():
+    """Run diagnostic checks for common Ralph Orchestrator issues."""
+    _console.print_header("RALPH DIAGNOSTICS")
+    _console.print_info("Running diagnostic checks for common issues...")
+    _console.print_info("This helps diagnose GitHub issue #39 and similar problems.")
+    
+    # System info
+    _console.print_separator()
+    _console.print_status("System Information")
+    _console.print_info(f"Python: {sys.version.split()[0]}")
+    _console.print_info(f"Platform: {sys.platform}")
+    _console.print_info(f"Working Directory: {os.getcwd()}")
+    
+    # Check CLI tools
+    _console.print_separator()
+    _console.print_status("CLI Tools")
+    
+    cli_tools = [
+        ('claude', 'Claude CLI'),
+        ('gemini', 'Gemini CLI'),
+        ('kiro-cli', 'Kiro CLI'),
+        ('q', 'Q Chat CLI'),
+    ]
+    
+    cli_results = {}
+    for cmd, name in cli_tools:
+        try:
+            result = subprocess.run([cmd, '--version'], capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                version = result.stdout.strip().split('\n')[0]  # First line only
+                _console.print_success(f"{name}: {version}")
+                cli_results[cmd] = True
+            else:
+                _console.print_error(f"{name}: Failed ({result.stderr.strip()})")
+                cli_results[cmd] = False
+        except FileNotFoundError:
+            _console.print_warning(f"{name}: Not found in PATH")
+            cli_results[cmd] = False
+        except subprocess.TimeoutExpired:
+            _console.print_warning(f"{name}: Timed out")
+            cli_results[cmd] = False
+        except Exception as e:
+            _console.print_error(f"{name}: Error - {e}")
+            cli_results[cmd] = False
+    
+    # Check Python packages
+    _console.print_separator()
+    _console.print_status("Python Packages")
+    
+    packages = [
+        ('ralph_orchestrator', 'Ralph Orchestrator'),
+        ('claude_agent_sdk', 'Claude Agent SDK'),
+    ]
+    
+    package_results = {}
+    for package, name in packages:
+        try:
+            __import__(package)
+            _console.print_success(f"{name}: Available")
+            package_results[package] = True
+        except ImportError:
+            _console.print_error(f"{name}: Not available")
+            package_results[package] = False
+    
+    # Check environment
+    _console.print_separator()
+    _console.print_status("Environment Variables")
+    
+    api_keys = [
+        ('ANTHROPIC_API_KEY', 'Claude API Key'),
+        ('GOOGLE_API_KEY', 'Google API Key'),
+        ('GEMINI_API_KEY', 'Gemini API Key'),
+    ]
+    
+    for env_var, name in api_keys:
+        value = os.getenv(env_var)
+        if value:
+            _console.print_success(f"{name}: Set (length: {len(value)})")
+        else:
+            _console.print_warning(f"{name}: Not set")
+    
+    # Check Ralph project files
+    _console.print_separator()
+    _console.print_status("Ralph Project Files")
+    
+    cwd = Path.cwd()
+    ralph_files = [
+        ('PROMPT.md', 'Prompt file'),
+        ('ralph.yml', 'Configuration file'),
+        ('.agent/', 'Agent workspace'),
+    ]
+    
+    for file, desc in ralph_files:
+        path = cwd / file
+        if path.exists():
+            _console.print_success(f"{desc}: Found")
+        else:
+            _console.print_warning(f"{desc}: Not found")
+    
+    # Test adapters
+    _console.print_separator()
+    _console.print_status("Adapter Tests")
+    
+    try:
+        from .adapters.claude import ClaudeAdapter
+        claude = ClaudeAdapter()
+        if claude.check_availability():
+            _console.print_success("Claude adapter: Available")
+        else:
+            _console.print_error("Claude adapter: Not available")
+    except Exception as e:
+        _console.print_error(f"Claude adapter: Error - {e}")
+    
+    try:
+        from .adapters.gemini import GeminiAdapter
+        gemini = GeminiAdapter()
+        if gemini.check_availability():
+            _console.print_success("Gemini adapter: Available")
+        else:
+            _console.print_error("Gemini adapter: Not available")
+    except Exception as e:
+        _console.print_error(f"Gemini adapter: Error - {e}")
+    
+    # Summary and recommendations
+    _console.print_separator()
+    _console.print_status("Summary & Recommendations")
+    
+    claude_ok = cli_results.get('claude', False)
+    gemini_ok = cli_results.get('gemini', False)
+    packages_ok = all(package_results.values())
+    
+    if not claude_ok and not gemini_ok:
+        _console.print_error("Both Claude and Gemini CLI tools have issues")
+        _console.print_info("This matches the symptoms of GitHub issue #39")
+        _console.print_info("Recommendations:")
+        _console.print_info("  1. Install Claude CLI: Follow https://github.com/anthropics/claude-code")
+        _console.print_info("  2. Install Gemini CLI: npm install -g @google/gemini-cli")
+        _console.print_info("  3. Verify API keys are set correctly")
+        _console.print_info("  4. Try running CLI tools directly to test them")
+    elif not claude_ok:
+        _console.print_warning("Claude CLI has issues")
+        _console.print_info("Try: Install Claude CLI or check authentication")
+    elif not gemini_ok:
+        _console.print_warning("Gemini CLI has issues")
+        _console.print_info("Try: Install Gemini CLI with npm install -g @google/gemini-cli")
+    else:
+        _console.print_success("All CLI tools appear to be working")
+        _console.print_info("If you're still having issues, try running Ralph with --verbose")
+    
+    if not packages_ok:
+        _console.print_error("Some Python packages are missing")
+        _console.print_info("Try: pip install ralph-orchestrator")
+    
+    _console.print_separator()
+    _console.print_info("For more help, visit: https://github.com/mikeyobrien/ralph-orchestrator/issues")
 
 
 def generate_prompt(rough_ideas: List[str], output_file: str = "PROMPT.md", interactive: bool = False, agent: str = "auto"):
@@ -373,9 +483,11 @@ def generate_prompt_with_agent(rough_ideas: List[str], agent: str = "auto", outp
         "c": "claude",
         "g": "gemini", 
         "q": "qchat",
+        "k": "kiro",
         "claude": "claude",
         "gemini": "gemini",
         "qchat": "qchat",
+        "kiro": "kiro",
         "auto": "auto"
     }
     agent = agent_name_map.get(agent, agent)
@@ -419,19 +531,17 @@ The file content should follow this EXACT format:
 - [Measurable success criterion 2]
 - [How to know when task is complete]
 
-## Completion
-When ALL requirements and success criteria are met, signal completion by writing on its own line:
-- [x] TASK_COMPLETE
+## Completion Promise
 
-(Other accepted formats: `**TASK_COMPLETE**`, `Status: TASK_COMPLETE`, or standalone `TASK_COMPLETE`)
+- When all success criteria are met, output this exact line:
+  {DEFAULT_COMPLETION_PROMISE}
 
-IMPORTANT:
+IMPORTANT: 
 1. WRITE the content to {output_file} using your file writing tools
 2. Make requirements specific and actionable with checkboxes
 3. Include relevant technical specifications for the task type
 4. Make success criteria measurable and clear
-5. Include the Completion section with clear instructions for signaling task completion
-6. The file should contain ONLY the structured markdown"""
+5. The file should contain ONLY the structured markdown"""
 
     # Try to use the specified agent or auto-detect
     success = False
@@ -440,6 +550,7 @@ IMPORTANT:
     try:
         from .adapters.claude import ClaudeAdapter
         from .adapters.qchat import QChatAdapter
+        from .adapters.kiro import KiroAdapter
         from .adapters.gemini import GeminiAdapter
     except ImportError:
         pass
@@ -477,6 +588,19 @@ IMPORTANT:
             if agent != "auto":
                 _console.print_error(f"Gemini adapter failed: {e}")
 
+    if not success and (agent == "kiro" or agent == "auto"):
+        try:
+            adapter = KiroAdapter()
+            if adapter.available:
+                result = adapter.execute(generation_prompt)
+                if result.success:
+                    success = True
+                    # Check if the file was created
+                    return Path(output_file).exists()
+        except Exception as e:
+            if agent != "auto":
+                _console.print_error(f"Kiro adapter failed: {e}")
+
     if not success and (agent == "qchat" or agent == "auto"):
         try:
             adapter = QChatAdapter()
@@ -496,365 +620,6 @@ IMPORTANT:
 
 
 
-def cmd_onboard(args):
-    """Onboard an existing Claude Code project to RALPH."""
-    from pathlib import Path as Pth
-
-    # Import onboarding modules
-    from .onboarding import (
-        AgentAnalyzer,
-        AnalysisResult,
-        ConfigGenerator,
-        HistoryAnalyzer,
-        PatternExtractor,
-        ProjectScanner,
-        SettingsLoader,
-    )
-
-    project_path = Pth(args.project_path).resolve()
-
-    if not project_path.exists():
-        _console.print_error(f"Project path does not exist: {project_path}")
-        sys.exit(1)
-
-    if not project_path.is_dir():
-        _console.print_error(f"Project path is not a directory: {project_path}")
-        sys.exit(1)
-
-    _console.print_header("RALPH Onboarding")
-    _console.print_status(f"Scanning project: {project_path}")
-
-    # Step 1: Load settings
-    inherit_settings = not args.no_inherit
-    settings = SettingsLoader(project_path)
-
-    if inherit_settings:
-        _console.print_info("Inheriting user settings from ~/.claude/settings.json")
-
-    # Step 2: Scan project
-    scanner = ProjectScanner(project_path, settings)
-    project_type = scanner.detect_project_type()
-    _console.print_success(f"Detected project type: {project_type.value}")
-
-    # Check for Claude history
-    history_files = scanner.find_claude_history()
-    if history_files:
-        _console.print_success(f"Found {len(history_files)} conversation file(s) in Claude history")
-    else:
-        _console.print_warning("No Claude Code conversation history found")
-
-    # Check for MCP config
-    mcp_servers = settings.get_mcp_servers()
-    if mcp_servers:
-        _console.print_success(f"Found {len(mcp_servers)} MCP server(s) configured")
-
-    # Check for CLAUDE.md
-    claude_md_files = scanner.find_claude_md_files()
-    if claude_md_files:
-        _console.print_success(f"Found {len(claude_md_files)} CLAUDE.md file(s)")
-
-    # Step 3: Analyze (agent or static mode)
-    analysis_result = None
-
-    if args.static:
-        _console.print_status("Using static analysis (parsing JSONL files directly)...")
-        if history_files:
-            history_analyzer = HistoryAnalyzer(history_files)
-            tool_usage = history_analyzer.extract_tool_usage()
-            mcp_usage = history_analyzer.extract_mcp_usage()
-            tool_chains = history_analyzer.extract_tool_chains()
-
-            _console.print_info(f"Parsed {len(tool_usage)} unique tools")
-            _console.print_info(f"Found {len(mcp_usage)} MCP server(s) used in history")
-            _console.print_info(f"Identified {len(tool_chains)} tool chains")
-
-            # Create AnalysisResult from static analysis
-            common_tools = {name: stats.success_rate for name, stats in tool_usage.items()}
-            workflows = [[t for t in chain.tools] for chain in tool_chains[:10]]
-
-            analysis_result = AnalysisResult(
-                project_type=project_type.value,
-                frameworks=[],  # Can't detect from static analysis
-                common_tools=common_tools,
-                workflows=workflows,
-                recommended_config={
-                    "max_iterations": 50,
-                    "max_tokens": 500000,
-                }
-            )
-        else:
-            _console.print_warning("No history files to analyze, using defaults")
-            analysis_result = AnalysisResult(project_type=project_type.value)
-    else:
-        # Agent-assisted analysis
-        _console.print_status("Using agent-assisted analysis...")
-
-        if args.use_memory and settings.has_memory_plugin():
-            _console.print_info("Using episodic memory for deeper analysis")
-        elif args.use_memory and not settings.has_memory_plugin():
-            _console.print_warning("--use-memory requested but no memory plugin found")
-
-        agent_analyzer = AgentAnalyzer(
-            project_path,
-            settings=settings,
-            inherit_user_settings=inherit_settings,
-        )
-
-        try:
-            analysis_result = agent_analyzer.sync_analyze()
-            if analysis_result and analysis_result.project_type != "unknown":
-                _console.print_success("Agent analysis completed successfully")
-            else:
-                _console.print_warning("Agent analysis returned limited results, supplementing with static analysis")
-                # Fallback to static if agent returns minimal data
-                if history_files:
-                    history_analyzer = HistoryAnalyzer(history_files)
-                    tool_usage = history_analyzer.extract_tool_usage()
-                    analysis_result.common_tools = {
-                        name: stats.success_rate for name, stats in tool_usage.items()
-                    }
-        except Exception as e:
-            _console.print_warning(f"Agent analysis failed: {e}")
-            _console.print_info("Falling back to static analysis...")
-
-            if history_files:
-                history_analyzer = HistoryAnalyzer(history_files)
-                tool_usage = history_analyzer.extract_tool_usage()
-                analysis_result = AnalysisResult(
-                    project_type=project_type.value,
-                    common_tools={name: stats.success_rate for name, stats in tool_usage.items()},
-                )
-            else:
-                analysis_result = AnalysisResult(project_type=project_type.value)
-
-    # Step 4: Extract patterns
-    _console.print_status("Extracting patterns from analysis...")
-
-    # Create history analyzer for pattern extraction if available
-    history_analyzer = None
-    if history_files:
-        history_analyzer = HistoryAnalyzer(history_files)
-
-    pattern_extractor = PatternExtractor(
-        history=history_analyzer,
-        analysis_result=analysis_result,
-    )
-
-    patterns = pattern_extractor.identify_project_patterns()
-
-    if patterns.workflows:
-        _console.print_info(f"Found {len(patterns.workflows)} workflow patterns")
-    if patterns.successful_tools:
-        _console.print_info(f"Top tools: {', '.join(patterns.successful_tools[:5])}")
-
-    # Step 5: Generate config
-    _console.print_status("Generating configuration files...")
-
-    config_generator = ConfigGenerator(
-        scanner=scanner,
-        extractor=pattern_extractor,
-        settings=settings,
-    )
-
-    output_dir = Pth(args.output_dir) if args.output_dir else project_path
-
-    if args.analyze_only:
-        # Just show what would be generated
-        _console.print_header("Analysis Results (--analyze-only)")
-
-        _console.print_info("ralph.yml preview:")
-        _console.print_separator()
-        print(config_generator.generate_ralph_yml())
-        _console.print_separator()
-
-        _console.print_info("RALPH_INSTRUCTIONS.md preview:")
-        _console.print_separator()
-        print(config_generator.generate_instructions())
-        _console.print_separator()
-
-        sys.exit(0)
-
-    if args.dry_run:
-        _console.print_info("Dry run mode - files would be written to:")
-        _console.print_info(f"  - {output_dir}/ralph.yml")
-        _console.print_info(f"  - {output_dir}/RALPH_INSTRUCTIONS.md")
-        _console.print_info(f"  - {output_dir}/PROMPT.md")
-        sys.exit(0)
-
-    # Handle merge mode
-    ralph_yml_path = output_dir / "ralph.yml"
-    if args.merge and ralph_yml_path.exists():
-        _console.print_info("Merging with existing ralph.yml...")
-        # For now, just warn - full merge logic can be added later
-        _console.print_warning("Merge mode not fully implemented, overwriting existing files")
-
-    # Write files
-    config_generator.write_all(output_dir)
-
-    _console.print_separator()
-    _console.print_success("Onboarding complete!")
-    _console.print_info(f"Generated files in: {output_dir}")
-    _console.print_info("  - ralph.yml (configuration)")
-    _console.print_info("  - RALPH_INSTRUCTIONS.md (learned patterns)")
-    _console.print_info("  - PROMPT.md (task template)")
-    _console.print_info("")
-    _console.print_info("Next steps:")
-    _console.print_info("  1. Edit PROMPT.md with your task description")
-    _console.print_info("  2. Run 'ralph run' to start the orchestrator")
-
-
-def cmd_tui(args):
-    """Run RALPH with TUI attached."""
-    try:
-        from .tui import RalphTUI
-        from .tui.connection import AttachedConnection
-    except ImportError as e:
-        _console.print_error(f"TUI dependencies not available: {e}")
-        _console.print_info("Install with: pip install 'ralph-orchestrator[tui]'")
-        sys.exit(1)
-
-    if not args.prompt_file and not args.config_file:
-        _console.print_error("Please provide a prompt file (-P) or config file (-c)")
-        sys.exit(1)
-
-    # Create orchestrator
-    orchestrator = RalphOrchestrator(
-        prompt_file_or_config=args.prompt_file or args.config_file,
-        max_iterations=args.max_iterations,
-        max_runtime=args.max_runtime,
-        max_cost=args.max_cost,
-        enable_validation=args.enable_validation,
-    )
-
-    # Create attached connection
-    connection = AttachedConnection(orchestrator)
-
-    # Create and run TUI
-    app = RalphTUI(
-        connection=connection,
-        prompt_file=args.prompt_file,
-    )
-
-    # Run orchestrator in background, TUI in foreground
-    async def run_with_tui():
-        import asyncio
-
-        # Start orchestrator in background task
-        orchestrator_task = asyncio.create_task(
-            asyncio.to_thread(orchestrator.run)
-        )
-
-        # Run TUI (blocks until quit)
-        await app.run_async()
-
-        # Cancel orchestrator if TUI exits
-        if not orchestrator_task.done():
-            orchestrator_task.cancel()
-
-    import asyncio
-    asyncio.run(run_with_tui())
-
-
-def cmd_watch(args):
-    """Watch a running orchestrator via WebSocket."""
-    try:
-        from .tui import RalphTUI
-        from .tui.connection import WebSocketConnection
-    except ImportError as e:
-        _console.print_error(f"TUI dependencies not available: {e}")
-        _console.print_info("Install with: pip install 'ralph-orchestrator[tui]'")
-        sys.exit(1)
-
-    # Create WebSocket connection
-    connection = WebSocketConnection()
-
-    # Create TUI in watch mode
-    app = RalphTUI(
-        connection=connection,
-        prompt_file=f"Watching: {args.url}",
-    )
-
-    # Set readonly mode if requested
-    if args.readonly:
-        # Disable control bindings
-        app.BINDINGS = [b for b in app.BINDINGS if b.key not in ("p", "c", "y", "n", "s")]
-
-    async def run_watch():
-        import asyncio
-
-        # Connect to WebSocket
-        connected = await connection.connect(args.url)
-        if not connected:
-            _console.print_error(f"Failed to connect to {args.url}")
-            sys.exit(1)
-
-        # Run TUI
-        await app.run_async()
-
-    import asyncio
-    asyncio.run(run_watch())
-
-
-def cmd_daemon(args):
-    """Manage daemon process."""
-    from .daemon.cli import daemon_start, daemon_stop, daemon_status, daemon_logs
-
-    daemon_cmd = args.daemon_command
-
-    if daemon_cmd == 'start':
-        result = daemon_start(prompt_file=getattr(args, 'prompt_file', None))
-        if result['success']:
-            _console.print_success(result['message'])
-        else:
-            _console.print_error(result['message'])
-            sys.exit(1)
-
-    elif daemon_cmd == 'stop':
-        result = daemon_stop()
-        if result['success']:
-            _console.print_success(result['message'])
-        else:
-            _console.print_warning(result['message'])
-
-    elif daemon_cmd == 'status':
-        result = daemon_status()
-        if result['running']:
-            _console.print_success(result['message'])
-        else:
-            _console.print_info(result['message'])
-
-    elif daemon_cmd == 'logs':
-        result = daemon_logs(
-            tail=getattr(args, 'tail', None),
-            follow=getattr(args, 'follow', False),
-        )
-        if result['success']:
-            if result.get('follow_mode'):
-                # Follow mode - stream the log file
-                log_file = result.get('log_file')
-                _console.print_info(f"Following {log_file} (Ctrl+C to stop)...")
-                try:
-                    import subprocess
-                    subprocess.run(['tail', '-f', log_file])
-                except KeyboardInterrupt:
-                    pass
-            else:
-                # Print log content
-                content = result.get('content', '')
-                if content:
-                    print(content)
-                else:
-                    _console.print_info("Log file is empty")
-        else:
-            _console.print_warning(result['message'])
-
-    else:
-        # No subcommand provided - show help
-        _console.print_error("Please specify a daemon command: start, stop, status, or logs")
-        _console.print_info("Usage: ralph daemon {start|stop|status|logs}")
-        sys.exit(1)
-
-
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -864,14 +629,10 @@ def main():
         epilog="""
 Commands:
     ralph               Run the orchestrator (default)
-    ralph init          Initialize a new Ralph project
+    ralph init          Initialize a new Ralph project  
     ralph status        Show current Ralph status
     ralph clean         Clean up agent workspace
-    ralph onboard       Analyze Claude Code project and generate config
     ralph prompt        Generate structured prompt from rough ideas
-    ralph tui           Run orchestrator with Terminal UI attached
-    ralph watch         Watch a running orchestrator via WebSocket
-    ralph daemon        Manage background daemon process
 
 Configuration:
     Use -c/--config to load settings from a YAML file.
@@ -887,15 +648,9 @@ Examples:
     ralph init                      # Set up new project
     ralph status                    # Check current progress
     ralph clean                     # Clean agent workspace
-    ralph onboard                   # Analyze and generate config for current dir
-    ralph onboard ~/my-project      # Onboard a specific project
-    ralph onboard . --static        # Static analysis (no API calls)
-    ralph onboard . --analyze-only  # Show analysis without writing files
     ralph prompt "build a web API"  # Generate API prompt
     ralph prompt -i                 # Interactive prompt creation
     ralph prompt -o task.md "scrape data" "save to CSV"  # Custom output
-    ralph tui -P task.md            # Run with Terminal UI
-    ralph watch -u ws://host:8080   # Watch remote orchestrator
 """
     )
     
@@ -910,74 +665,10 @@ Examples:
     
     # Clean command
     subparsers.add_parser('clean', help='Clean up agent workspace')
-
-    # Onboard command - analyze Claude Code projects and generate RALPH config
-    onboard_parser = subparsers.add_parser(
-        'onboard',
-        help='Analyze Claude Code project and generate RALPH configuration',
-        description='Scan a Claude Code project to extract patterns, workflows, and MCP configurations, then generate optimized ralph.yml and related files.',
-    )
-    onboard_parser.add_argument(
-        'project_path',
-        nargs='?',
-        default='.',
-        help='Path to the project to onboard (default: current directory)'
-    )
-    # Analysis mode options
-    onboard_parser.add_argument(
-        '--agent',
-        action='store_true',
-        default=True,
-        help='Use Claude agent for intelligent analysis (default)'
-    )
-    onboard_parser.add_argument(
-        '--static',
-        action='store_true',
-        help='Use static analysis only (parse JSONL directly, no API calls)'
-    )
-    onboard_parser.add_argument(
-        '--use-memory',
-        action='store_true',
-        help='Explicitly use mcp-memory/episodic memory for deeper analysis'
-    )
-    # Settings options
-    onboard_parser.add_argument(
-        '--inherit-settings',
-        action='store_true',
-        default=True,
-        help="Load user's ~/.claude/settings.json (default)"
-    )
-    onboard_parser.add_argument(
-        '--no-inherit',
-        action='store_true',
-        help="Don't inherit user settings (isolated analysis)"
-    )
-    # Output options
-    onboard_parser.add_argument(
-        '-o', '--output-dir',
-        help='Output directory for generated files (default: project root)'
-    )
-    onboard_parser.add_argument(
-        '-a', '--analyze-only',
-        action='store_true',
-        help='Show analysis without generating files'
-    )
-    onboard_parser.add_argument(
-        '--merge',
-        action='store_true',
-        help='Merge with existing ralph.yml instead of overwriting'
-    )
-    onboard_parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Preview changes without writing files'
-    )
-    onboard_parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help='Show detailed analysis output'
-    )
-
+    
+    # Doctor command (diagnostic tool for issue #39)
+    subparsers.add_parser('doctor', help='Run diagnostic checks for common issues')
+    
     # Prompt command
     prompt_parser = subparsers.add_parser('prompt', help='Generate structured prompt from rough ideas')
     prompt_parser.add_argument(
@@ -997,128 +688,11 @@ Examples:
     )
     prompt_parser.add_argument(
         '-a', '--agent',
-        choices=['claude', 'c', 'gemini', 'g', 'qchat', 'q', 'auto'],
+        choices=['claude', 'c', 'gemini', 'g', 'qchat', 'q', 'kiro', 'k', 'auto'],
         default='auto',
-        help='AI agent to use: claude/c, gemini/g, qchat/q, auto (default: auto)'
+        help='AI agent to use: claude/c, gemini/g, qchat/q, kiro/k, auto (default: auto)'
     )
     
-    # TUI command - run orchestrator with Terminal UI
-    tui_parser = subparsers.add_parser(
-        'tui',
-        help='Run orchestrator with Terminal UI attached',
-        description='Launch RALPH with a real-time Terminal User Interface for monitoring.',
-    )
-    tui_parser.add_argument(
-        '-P', '--prompt',
-        dest='prompt_file',
-        help='Path to prompt file',
-    )
-    tui_parser.add_argument(
-        '-c', '--config',
-        dest='config_file',
-        help='Path to configuration file',
-    )
-    tui_parser.add_argument(
-        '-i', '--max-iterations',
-        type=int,
-        default=100,
-        help='Maximum iterations (default: 100)',
-    )
-    tui_parser.add_argument(
-        '-t', '--max-runtime',
-        type=int,
-        default=3600,
-        help='Maximum runtime in seconds (default: 3600)',
-    )
-    tui_parser.add_argument(
-        '--max-cost',
-        type=float,
-        default=50.0,
-        help='Maximum cost limit in dollars (default: 50.0)',
-    )
-    tui_parser.add_argument(
-        '--theme',
-        choices=['default', 'cyberpunk', 'light'],
-        default='default',
-        help='TUI color theme (default: default)',
-    )
-    tui_parser.add_argument(
-        '--enable-validation',
-        action='store_true',
-        help='Enable validation gates',
-    )
-
-    # Watch command - connect to running orchestrator via WebSocket
-    watch_parser = subparsers.add_parser(
-        'watch',
-        help='Watch a running orchestrator via WebSocket',
-        description='Connect to a running RALPH orchestrator and display real-time progress.',
-    )
-    watch_parser.add_argument(
-        '-u', '--url',
-        default='ws://localhost:8080/ws',
-        help='WebSocket URL of running orchestrator (default: ws://localhost:8080/ws)',
-    )
-    watch_parser.add_argument(
-        '--readonly',
-        action='store_true',
-        help='Read-only mode (disable controls)',
-    )
-    watch_parser.add_argument(
-        '--theme',
-        choices=['default', 'cyberpunk', 'light'],
-        default='default',
-        help='TUI color theme (default: default)',
-    )
-
-    # Daemon command - manage background daemon process
-    daemon_parser = subparsers.add_parser(
-        'daemon',
-        help='Manage background daemon process',
-        description='Start, stop, and manage the Ralph daemon for background orchestration.',
-    )
-    daemon_subparsers = daemon_parser.add_subparsers(dest='daemon_command', help='Daemon commands')
-
-    # daemon start
-    daemon_start_parser = daemon_subparsers.add_parser(
-        'start',
-        help='Start the daemon',
-    )
-    daemon_start_parser.add_argument(
-        '-P', '--prompt',
-        dest='prompt_file',
-        help='Path to prompt file to run',
-    )
-
-    # daemon stop
-    daemon_subparsers.add_parser(
-        'stop',
-        help='Stop the daemon',
-    )
-
-    # daemon status
-    daemon_subparsers.add_parser(
-        'status',
-        help='Check daemon status',
-    )
-
-    # daemon logs
-    daemon_logs_parser = daemon_subparsers.add_parser(
-        'logs',
-        help='View daemon logs',
-    )
-    daemon_logs_parser.add_argument(
-        '--tail',
-        type=int,
-        default=None,
-        help='Number of lines from end to show',
-    )
-    daemon_logs_parser.add_argument(
-        '-f', '--follow',
-        action='store_true',
-        help='Follow log output',
-    )
-
     # Run command (default) - add all the run options
     run_parser = subparsers.add_parser('run', help='Run the orchestrator')
     
@@ -1131,8 +705,8 @@ Examples:
         
         p.add_argument(
             "-a", "--agent",
-            choices=["claude", "q", "gemini", "acp", "auto"],
-            default="auto",
+            choices=["claude", "q", "gemini", "kiro", "acp", "auto"],
+            default=None,
             help="AI agent to use (default: auto)"
         )
 
@@ -1148,10 +722,36 @@ Examples:
             default=None,
             help="ACP permission mode (default: auto_approve)"
         )
+
+        p.add_argument(
+            "--codex",
+            action="store_true",
+            help="Shortcut for --agent acp --acp-agent codex-acp (Codex via ACP)",
+        )
+
+        p.add_argument(
+            "--codex-permission-mode",
+            choices=["auto_approve", "deny_all", "allowlist", "interactive"],
+            default=None,
+            help="Permission mode shortcut for --codex (default: interactive)",
+        )
+
+        p.add_argument(
+            "--codex-model",
+            default=None,
+            help="Model to use with --codex (passed to codex-acp as -c model=...)",
+        )
+
+        p.add_argument(
+            "--codex-reasoning-effort",
+            choices=["low", "medium", "high", "xhigh"],
+            default=None,
+            help="Reasoning effort to use with --codex (passed to codex-acp as -c model_reasoning_effort=...)",
+        )
         
         p.add_argument(
             "-P", "--prompt-file",
-            default=DEFAULT_PROMPT_FILE,
+            default=None,
             dest="prompt",
             help=f"Prompt file (default: {DEFAULT_PROMPT_FILE})"
         )
@@ -1161,11 +761,17 @@ Examples:
             default=None,
             help="Direct prompt text (overrides --prompt-file)"
         )
+
+        p.add_argument(
+            "--completion-promise",
+            default=None,
+            help=f"Stop when agent output contains this exact string (default: {DEFAULT_COMPLETION_PROMISE})"
+        )
         
         p.add_argument(
             "-i", "--iterations", "--max-iterations",
             type=int,
-            default=DEFAULT_MAX_ITERATIONS,
+            default=None,
             dest="max_iterations",
             help=f"Maximum iterations (default: {DEFAULT_MAX_ITERATIONS})"
         )
@@ -1173,7 +779,7 @@ Examples:
         p.add_argument(
             "-t", "--time", "--max-runtime",
             type=int,
-            default=DEFAULT_MAX_RUNTIME,
+            default=None,
             dest="max_runtime",
             help=f"Maximum runtime in seconds (default: {DEFAULT_MAX_RUNTIME})"
         )
@@ -1194,56 +800,56 @@ Examples:
         p.add_argument(
             "--max-tokens",
             type=int,
-            default=DEFAULT_MAX_TOKENS,
+            default=None,
             help=f"Maximum total tokens (default: {DEFAULT_MAX_TOKENS})"
         )
         
         p.add_argument(
             "--max-cost",
             type=float,
-            default=DEFAULT_MAX_COST,
+            default=None,
             help=f"Maximum cost in USD (default: {DEFAULT_MAX_COST})"
         )
         
         p.add_argument(
             "--context-window",
             type=int,
-            default=DEFAULT_CONTEXT_WINDOW,
+            default=None,
             help=f"Context window size (default: {DEFAULT_CONTEXT_WINDOW})"
         )
         
         p.add_argument(
             "--context-threshold",
             type=float,
-            default=DEFAULT_CONTEXT_THRESHOLD,
+            default=None,
             help=f"Context summarization threshold (default: {DEFAULT_CONTEXT_THRESHOLD})"
         )
         
         p.add_argument(
             "--checkpoint-interval",
             type=int,
-            default=DEFAULT_CHECKPOINT_INTERVAL,
+            default=None,
             help=f"Git checkpoint interval (default: {DEFAULT_CHECKPOINT_INTERVAL})"
         )
         
         p.add_argument(
             "--retry-delay",
             type=int,
-            default=DEFAULT_RETRY_DELAY,
+            default=None,
             help=f"Retry delay on errors (default: {DEFAULT_RETRY_DELAY})"
         )
         
         p.add_argument(
             "--metrics-interval",
             type=int,
-            default=DEFAULT_METRICS_INTERVAL,
+            default=None,
             help=f"Metrics logging interval (default: {DEFAULT_METRICS_INTERVAL})"
         )
         
         p.add_argument(
             "--max-prompt-size",
             type=int,
-            default=DEFAULT_MAX_PROMPT_SIZE,
+            default=None,
             help=f"Max prompt file size (default: {DEFAULT_MAX_PROMPT_SIZE})"
         )
         
@@ -1270,22 +876,7 @@ Examples:
             action="store_true",
             help="Allow potentially unsafe prompt paths"
         )
-
-        # Validation feature flags
-        p.add_argument(
-            "--enable-validation",
-            action="store_true",
-            dest="enable_validation",
-            help="Enable validation feature (Claude-only, opt-in)"
-        )
-
-        p.add_argument(
-            "--no-validation-interactive",
-            action="store_true",
-            dest="no_validation_interactive",
-            help="Disable interactive validation confirmation (for CI/CD)"
-        )
-
+        
         # Collect remaining arguments for agent
         p.add_argument(
             "agent_args",
@@ -1295,6 +886,9 @@ Examples:
     
     # Parse arguments
     args = parser.parse_args()
+
+    # Apply convenience shortcuts (may adjust args.agent/acp settings)
+    _apply_codex_shortcut(args, parser)
     
     # Handle commands
     command = args.command if args.command else 'run'
@@ -1310,29 +904,17 @@ Examples:
     if command == 'clean':
         clean_workspace()
         sys.exit(0)
-
-    if command == 'onboard':
-        cmd_onboard(args)
+    
+    if command == 'doctor':
+        run_diagnostics()
         sys.exit(0)
-
+    
     if command == 'prompt':
         # Use interactive mode if no ideas provided or -i flag used
         interactive_mode = args.interactive or not args.ideas
         generate_prompt(args.ideas, args.output, interactive_mode, args.agent)
         sys.exit(0)
-
-    if command == 'tui':
-        cmd_tui(args)
-        sys.exit(0)
-
-    if command == 'watch':
-        cmd_watch(args)
-        sys.exit(0)
-
-    if command == 'daemon':
-        cmd_daemon(args)
-        sys.exit(0)
-
+    
     # Run command (default)
     # Set up logging
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -1347,57 +929,127 @@ Examples:
         "c": AgentType.CLAUDE,
         "q": AgentType.Q,
         "qchat": AgentType.Q,
+        "kiro": AgentType.KIRO,
+        "k": AgentType.KIRO,
         "gemini": AgentType.GEMINI,
         "g": AgentType.GEMINI,
         "acp": AgentType.ACP,
         "auto": AgentType.AUTO
     }
     
-    # Create config - load from YAML if provided, otherwise use CLI args
-    if args.config:
+    # Create config - load from YAML if provided, otherwise use CLI args.
+    # If no --config is provided, auto-load ./ralph.yml when present.
+    auto_config_path: str | None = None
+    if not getattr(args, "config", None) and Path("ralph.yml").exists():
+        auto_config_path = "ralph.yml"
+
+    config_path = getattr(args, "config", None) or auto_config_path
+
+    if config_path:
         try:
-            config = RalphConfig.from_yaml(args.config)
-            # Override with any CLI arguments that were explicitly provided
-            if hasattr(args, 'agent') and args.agent != 'auto':
+            config = RalphConfig.from_yaml(config_path)
+            if auto_config_path and config_path == auto_config_path:
+                _console.print_info(f"Using config: {config_path}")
+            
+            # Override with any CLI arguments that were explicitly provided (not None)
+            if hasattr(args, 'agent') and args.agent is not None:
                 config.agent = agent_map[args.agent]
-            if hasattr(args, 'verbose') and args.verbose:
-                config.verbose = args.verbose
-            if hasattr(args, 'dry_run') and args.dry_run:
-                config.dry_run = args.dry_run
-            # Override validation settings from CLI if explicitly provided
-            if getattr(args, 'enable_validation', False):
-                config.enable_validation = True
-            if getattr(args, 'no_validation_interactive', False):
-                config.validation_interactive = False
+            
+            # Map simple value arguments
+            value_args = {
+                'prompt': 'prompt_file',
+                'prompt_text': 'prompt_text',
+                'completion_promise': 'completion_promise',
+                'max_iterations': 'max_iterations',
+                'max_runtime': 'max_runtime',
+                'checkpoint_interval': 'checkpoint_interval',
+                'retry_delay': 'retry_delay',
+                'max_tokens': 'max_tokens',
+                'max_cost': 'max_cost',
+                'context_window': 'context_window',
+                'context_threshold': 'context_threshold',
+                'metrics_interval': 'metrics_interval',
+                'max_prompt_size': 'max_prompt_size'
+            }
+            
+            for arg_name, config_name in value_args.items():
+                if hasattr(args, arg_name) and getattr(args, arg_name) is not None:
+                    setattr(config, config_name, getattr(args, arg_name))
+            
+            # Handle boolean flags (flags override config)
+            if args.verbose:
+                config.verbose = True
+            if args.dry_run:
+                config.dry_run = True
+            if args.allow_unsafe_paths:
+                config.allow_unsafe_paths = True
+                
+            # Handle "no-" flags (if flag is set, feature is disabled)
+            if args.no_git:
+                config.git_checkpoint = False
+            if args.no_archive:
+                config.archive_prompts = False
+            if args.no_metrics:
+                config.enable_metrics = False
+
+            # Merge agent args if provided
+            if hasattr(args, 'agent_args') and args.agent_args:
+                config.agent_args = args.agent_args
+
         except Exception as e:
             _console.print_error(f"Error loading config file: {e}")
             sys.exit(1)
     else:
-        # Create config from CLI arguments
-        config = RalphConfig(
-            agent=agent_map[args.agent],
-            prompt_file=args.prompt,
-            prompt_text=args.prompt_text,
-            max_iterations=args.max_iterations,
-            max_runtime=args.max_runtime,
-            checkpoint_interval=args.checkpoint_interval,
-            retry_delay=args.retry_delay,
-            archive_prompts=not args.no_archive,
-            git_checkpoint=not args.no_git,
-            verbose=args.verbose,
-            dry_run=args.dry_run,
-            max_tokens=args.max_tokens,
-            max_cost=args.max_cost,
-            context_window=args.context_window,
-            context_threshold=args.context_threshold,
-            metrics_interval=args.metrics_interval,
-            enable_metrics=not args.no_metrics,
-            max_prompt_size=args.max_prompt_size,
-            allow_unsafe_paths=args.allow_unsafe_paths,
-            agent_args=args.agent_args if hasattr(args, 'agent_args') else [],
-            enable_validation=getattr(args, 'enable_validation', False),
-            validation_interactive=not getattr(args, 'no_validation_interactive', False),
-        )
+        # Create config from CLI arguments, using defaults for None values
+        # We construct a dict of non-None arguments to pass to RalphConfig
+        # RalphConfig has defaults for all fields, so we only pass what we have
+        
+        config_kwargs = {}
+        
+        # Map arguments to config fields
+        if hasattr(args, 'agent') and args.agent is not None:
+            config_kwargs['agent'] = agent_map[args.agent]
+        
+        value_args = {
+            'prompt': 'prompt_file',
+            'prompt_text': 'prompt_text',
+            'completion_promise': 'completion_promise',
+            'max_iterations': 'max_iterations',
+            'max_runtime': 'max_runtime',
+            'checkpoint_interval': 'checkpoint_interval',
+            'retry_delay': 'retry_delay',
+            'max_tokens': 'max_tokens',
+            'max_cost': 'max_cost',
+            'context_window': 'context_window',
+            'context_threshold': 'context_threshold',
+            'metrics_interval': 'metrics_interval',
+            'max_prompt_size': 'max_prompt_size'
+        }
+        
+        for arg_name, config_name in value_args.items():
+            if hasattr(args, arg_name) and getattr(args, arg_name) is not None:
+                config_kwargs[config_name] = getattr(args, arg_name)
+        
+        # Handle booleans - RalphConfig defaults are mostly safe, but we should be explicit
+        if args.verbose:
+            config_kwargs['verbose'] = True
+        if args.dry_run:
+            config_kwargs['dry_run'] = True
+        if args.allow_unsafe_paths:
+            config_kwargs['allow_unsafe_paths'] = True
+            
+        if args.no_git:
+            config_kwargs['git_checkpoint'] = False
+        if args.no_archive:
+            config_kwargs['archive_prompts'] = False
+        if args.no_metrics:
+            config_kwargs['enable_metrics'] = False
+            
+        if hasattr(args, 'agent_args') and args.agent_args:
+            config_kwargs['agent_args'] = args.agent_args
+            
+        # Instantiate with gathered arguments
+        config = RalphConfig(**config_kwargs)
 
     # Validate prompt source exists and has content (before dry-run check)
     if config.prompt_text is not None:
@@ -1425,19 +1077,6 @@ Examples:
 ---""")
             sys.exit(1)
 
-    # Validate config before proceeding
-    validation_errors = config.validate()
-    if validation_errors:
-        _console.print_error("Configuration validation failed:")
-        for error in validation_errors:
-            _console.print_error(f"  - {error}")
-        sys.exit(1)
-
-    # Show config warnings
-    config_warnings = config.get_warnings()
-    for warning in config_warnings:
-        _console.print_warning(warning)
-
     if config.dry_run:
         _console.print_info("Dry run mode - no tools will be executed")
         _console.print_info("Configuration:")
@@ -1450,9 +1089,6 @@ Examples:
         _console.print_info(f"  Max iterations: {config.max_iterations}")
         _console.print_info(f"  Max runtime: {config.max_runtime}s")
         _console.print_info(f"  Max cost: ${config.max_cost:.2f}")
-        _console.print_info(f"  Validation: {'enabled' if config.enable_validation else 'disabled'}")
-        if config.enable_validation:
-            _console.print_info(f"  Validation interactive: {config.validation_interactive}")
         sys.exit(0)
     
     try:
@@ -1474,6 +1110,7 @@ Examples:
             "q": "qchat",
             "claude": "claude",
             "gemini": "gemini",
+            "kiro": "kiro",
             "acp": "acp",
             "auto": "auto"
         }
@@ -1482,9 +1119,9 @@ Examples:
         # Pass ACP-specific CLI arguments if using ACP adapter
         acp_agent = getattr(args, 'acp_agent', None)
         acp_permission_mode = getattr(args, 'acp_permission_mode', None)
+        acp_agent_args = getattr(args, 'agent_args', None)
 
         # Pass full config to orchestrator so prompt_text is available
-        # Validation settings are now part of the config object
         orchestrator = RalphOrchestrator(
             prompt_file_or_config=config,
             primary_tool=primary_tool,
@@ -1496,8 +1133,7 @@ Examples:
             verbose=config.verbose,
             acp_agent=acp_agent,
             acp_permission_mode=acp_permission_mode,
-            enable_validation=config.enable_validation,
-            validation_interactive=config.validation_interactive
+            acp_agent_args=acp_agent_args,
         )
 
         # Enable all tools for Claude adapter (including WebSearch)
@@ -1506,12 +1142,6 @@ Examples:
             claude_adapter.configure(enable_all_tools=True, enable_web_search=True)
             if config.verbose:
                 _console.print_success("Claude configured with all native tools including WebSearch")
-
-        # Start web monitoring if enabled
-        web_result = start_web_monitor(config, orchestrator)
-        if web_result:
-            monitor, web_thread, web_port = web_result
-            _console.print_separator()
 
         orchestrator.run()
 

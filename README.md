@@ -1,7 +1,7 @@
 # Ralph Orchestrator
 
 [![Documentation](https://img.shields.io/badge/docs-mkdocs-blue)](https://mikeyobrien.github.io/ralph-orchestrator/)
-[![Version](https://img.shields.io/badge/version-1.2.0-green)](https://github.com/mikeyobrien/ralph-orchestrator/releases)
+[![Version](https://img.shields.io/badge/version-1.2.2-green)](https://github.com/mikeyobrien/ralph-orchestrator/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](tests/)
 
@@ -21,10 +21,11 @@ Ralph Orchestrator implements a simple but effective pattern for autonomous task
 
 Based on the Ralph Wiggum technique by [Geoffrey Huntley](https://ghuntley.com/ralph/), this implementation provides a robust, tested, and feature-complete orchestration system for AI-driven development.
 
-## ✅ Production Ready - v1.2.0
+## ✅ Production Ready - v1.2.2
 
 - **Claude Integration**: ✅ COMPLETE (with Agent SDK)
-- **Q Chat Integration**: ✅ COMPLETE
+- **Kiro CLI Integration**: ✅ COMPLETE (Successor to Q Chat)
+- **Q Chat Integration**: ✅ COMPLETE (Legacy Support)
 - **Gemini Integration**: ✅ COMPLETE
 - **ACP Protocol Support**: ✅ COMPLETE (Agent Client Protocol)
 - **Terminal UI (TUI)**: ✅ COMPLETE (real-time dashboard, 149 tests)
@@ -35,7 +36,7 @@ Based on the Ralph Wiggum technique by [Geoffrey Huntley](https://ghuntley.com/r
 
 ## Features
 
-- 🤖 **Multiple AI Agent Support**: Works with Claude, Q Chat, Gemini CLI, and ACP-compliant agents
+- 🤖 **Multiple AI Agent Support**: Works with Claude, Kiro CLI, Q Chat, Gemini CLI, and ACP-compliant agents
 - 🔍 **Auto-detection**: Automatically detects which AI agents are available
 - 🌐 **WebSearch Support**: Claude can search the web for current information
 - 💾 **Checkpointing**: Git-based async checkpointing for recovery and history
@@ -49,10 +50,21 @@ Based on the Ralph Wiggum technique by [Geoffrey Huntley](https://ghuntley.com/r
 - 🔒 **Security Features**: Automatic masking of API keys et sensitive data in logs
 - ⚡ **Async-First Design**: Non-blocking I/O throughout (logging, git operations)
 - 📝 **Inline Prompts**: Run with `-p "your task"` without needing a file
-- 🧠 **Agent Scratchpad**: ACP agents persist context across iterations via `.agent/scratchpad.md`
-- ✅ **Validation Feature**: Opt-in collaborative validation with real execution (Claude-only)
+- 🧠 **Agent Scratchpad**: All agents persist context across iterations via `.agent/scratchpad.md`
 
 ## Installation
+
+### For Users (Recommended)
+
+```bash
+# Install with uv tool (easiest way to run Ralph globally)
+uv tool install ralph-orchestrator
+
+# Or install with pip
+pip install ralph-orchestrator
+```
+
+### For Developers
 
 ```bash
 # Clone the repository
@@ -81,7 +93,12 @@ At least one AI CLI tool must be installed:
   export ANTHROPIC_API_KEY="sk-ant-..."
   ```
 
-- **[Q Chat](https://github.com/qchat/qchat)**
+- **[Kiro CLI](https://github.com/kiro-cli/kiro)** (formerly Q Chat)
+  ```bash
+  # Follow installation instructions in repo
+  ```
+
+- **[Q Chat](https://github.com/qchat/qchat)** (Legacy)
   ```bash
   # Follow installation instructions in repo
   ```
@@ -114,7 +131,7 @@ This creates:
 Edit `ralph.yml` to customize settings:
 ```yaml
 # Ralph Orchestrator Configuration
-agent: auto                    # Which agent to use: claude, q, gemini, acp, auto
+agent: auto                    # Which agent to use: claude, kiro, q, gemini, acp, auto
 prompt_file: PROMPT.md         # Path to prompt file
 max_iterations: 100            # Maximum iterations before stopping
 max_runtime: 14400             # Maximum runtime in seconds (4 hours)
@@ -125,6 +142,9 @@ adapters:
   claude:
     enabled: true
     timeout: 300              # Timeout in seconds
+  kiro:
+    enabled: true
+    timeout: 300
   q:
     enabled: true
     timeout: 300
@@ -173,6 +193,7 @@ ralph -c ralph.yml
 
 # Use specific agent
 ralph run -a claude
+ralph run -a kiro
 ralph run -a q
 ralph run -a gemini
 ralph run -a acp               # ACP-compliant agent
@@ -203,9 +224,10 @@ Commands:
 
 Core Options:
   -c, --config CONFIG             Configuration file (YAML format)
-  -a, --agent {claude,q,gemini,acp,auto}  AI agent to use (default: auto)
+  -a, --agent {claude,kiro,q,gemini,acp,auto}  AI agent to use (default: auto)
   -P, --prompt-file FILE          Prompt file path (default: PROMPT.md)
   -p, --prompt-text TEXT          Inline prompt text (overrides file)
+  --completion-promise TEXT       Stop when agent output contains this exact string (default: LOOP_COMPLETE)
   -i, --max-iterations N          Maximum iterations (default: 100)
   -t, --max-runtime SECONDS      Maximum runtime (default: 14400)
   -v, --verbose                   Enable verbose output
@@ -275,7 +297,7 @@ adapters:
 
 ### Agent Scratchpad
 
-ACP agents maintain context across iterations via `.agent/scratchpad.md`. This file persists:
+All agents maintain context across iterations via `.agent/scratchpad.md`. This file persists:
 - Progress from previous iterations
 - Decisions and context
 - Current blockers or issues
@@ -364,7 +386,7 @@ The ACP adapter handles these agent requests:
 ### Execution Flow
 
 1. **Initialization**: Creates `.agent/` directories and validates prompt file
-2. **Agent Detection**: Auto-detects available AI agents (claude, q, gemini)
+2. **Agent Detection**: Auto-detects available AI agents (claude, kiro, q, gemini)
 3. **Iteration Loop**: 
    - Executes AI agent with current prompt
    - Monitors for task completion marker
@@ -375,6 +397,7 @@ The ACP adapter handles these agent requests:
    - Max runtime exceeded
    - Cost limits reached
    - Too many consecutive errors
+   - Completion promise matched (default: LOOP_COMPLETE)
 
 ## Project Structure
 
@@ -388,6 +411,7 @@ ralph-orchestrator/
 │       ├── adapters/        # AI agent adapters
 │       │   ├── base.py      # Base adapter interface
 │       │   ├── claude.py    # Claude Agent SDK adapter
+│       │   ├── kiro.py      # Kiro CLI adapter
 │       │   ├── gemini.py    # Gemini CLI adapter
 │       │   ├── qchat.py     # Q Chat adapter
 │       │   ├── acp.py       # ACP (Agent Client Protocol) adapter
@@ -583,6 +607,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 # - Requires read/write access to the API
 
 # For Q and Gemini, check CLI tools are installed
+which kiro-cli
 which q
 which gemini
 
@@ -653,7 +678,7 @@ MIT License - See LICENSE file for details
 
 ## Version History
 
-- **v1.2.0** (2025-12 / 2026-01)
+- **v1.2.2** (2025-12)
   - **Terminal UI (TUI)**: Real-time dashboard built on Textual framework
     - Live metrics, iteration progress, and cost tracking
     - Log viewer with syntax highlighting
