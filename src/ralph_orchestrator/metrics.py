@@ -215,6 +215,7 @@ class IterationStats:
         tokens_used: int = 0,
         cost: float = 0.0,
         tools_used: List[str] | None = None,
+        learning_stats: Dict[str, Any] | None = None,
     ) -> None:
         """Record iteration with full details.
 
@@ -228,6 +229,7 @@ class IterationStats:
             tokens_used: Total tokens consumed in this iteration
             cost: Cost in dollars for this iteration
             tools_used: List of tools/MCPs invoked during iteration
+            learning_stats: ACE learning statistics for this iteration (skills delta, events, etc.)
         """
         # Update basic statistics
         self.total = max(self.total, iteration)
@@ -254,6 +256,7 @@ class IterationStats:
             "tokens_used": tokens_used,
             "cost": cost,
             "tools_used": tools_used or [],
+            "learning": learning_stats or {},
         }
         self.iterations.append(iteration_data)
 

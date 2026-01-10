@@ -36,6 +36,18 @@ Reference:
     https://github.com/kayba-ai/agentic-context-engine
 """
 
-from .ace_adapter import ACELearningAdapter, LearningConfig, ACE_AVAILABLE
+from .ace_adapter import (
+    ACELearningAdapter,
+    LearningConfig,
+    ACE_AVAILABLE,
+    LearningEvent,
+    LEARNING_EVENTS,
+)
 
-__all__ = ["ACELearningAdapter", "LearningConfig", "ACE_AVAILABLE"]
+__all__ = [
+    "ACELearningAdapter",
+    "LearningConfig",
+    "ACE_AVAILABLE",
+    "LearningEvent",
+    "LEARNING_EVENTS",
+]

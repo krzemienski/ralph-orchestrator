@@ -185,6 +185,107 @@ python ralph_orchestrator.py --retry-delay 10
 python ralph_orchestrator.py --retry-delay 1
 ```
 
+## ACE Learning Configuration
+
+Ralph integrates with [ACE (Agentic Context Engineering)](https://github.com/kayba-ai/agentic-context-engine) to enable self-improving agent loops. After each iteration, ACE analyzes outcomes and injects learned strategies into subsequent iterations.
+
+### Learning Options
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--learning` | `false` | Enable ACE learning loop |
+| `--learning-model` | `claude-sonnet-4-5-20250929` | Model for reflection/skill management |
+| `--skillbook-path` | `.agent/skillbook/skillbook.json` | Path to persist learned skills |
+
+**Example:**
+```bash
+# Enable learning with defaults
+ralph run --learning "Build a REST API"
+
+# Use a different model for learning
+ralph run --learning --learning-model "claude-haiku-3-5" "Simple task"
+
+# Custom skillbook location
+ralph run --learning --skillbook-path ".agent/project-skills.json" "Your task"
+```
+
+### Configuration File (ralph.yml)
+
+```yaml
+learning:
+  enabled: true                              # Enable/disable learning
+  model: claude-sonnet-4-5-20250929          # Model for reflection
+  skillbook_path: .agent/skillbook/skillbook.json  # Skillbook location
+  async_learning: true                       # Learn in background (non-blocking)
+  max_skills: 100                            # Maximum skills to retain
+```
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `RALPH_LEARNING_ENABLED` | Override `enabled` (true/false) |
+| `RALPH_LEARNING_MODEL` | Override `model` |
+| `RALPH_SKILLBOOK_PATH` | Override `skillbook_path` |
+
+### How ACE Learning Works
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                 ACE Learning Loop (per iteration)             │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│  1. INJECT: Skillbook context added to prompt                │
+│     └─ Previously learned strategies guide this iteration    │
+│                                                               │
+│  2. EXECUTE: Normal Ralph iteration runs                     │
+│     └─ Agent uses enhanced prompt with learned patterns      │
+│                                                               │
+│  3. LEARN: ACE analyzes execution (async, non-blocking)      │
+│     ├─ Reflector: Extracts what worked/failed                │
+│     └─ SkillManager: Updates skillbook with new skills       │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Skillbook Persistence
+
+The skillbook (`.agent/skillbook/skillbook.json`) stores learned strategies:
+
+- **Auto-created**: First learning run creates the skillbook
+- **Incremental updates**: Each iteration adds new learnings
+- **Pruned automatically**: Old skills removed when `max_skills` exceeded
+- **Portable**: Commit to git to share learnings across environments
+
+### Installation
+
+ACE learning requires the optional `learning` dependency:
+
+```bash
+# Install with learning support
+pip install ralph-orchestrator[learning]
+
+# Or with uv
+uv pip install ralph-orchestrator[learning]
+```
+
+### Learning Profiles
+
+**Development Profile (fast iteration):**
+```bash
+ralph run --learning --learning-model claude-haiku-3-5 --max-iterations 10 "Quick task"
+```
+
+**Production Profile (thorough learning):**
+```bash
+ralph run --learning --learning-model claude-sonnet-4-5-20250929 --max-iterations 100 "Complex task"
+```
+
+**Budget Profile (minimal learning cost):**
+```bash
+ralph run --learning --learning-model claude-haiku-3-5 --max-cost 5.0 "Task with budget"
+```
+
 ## ACP (Agent Client Protocol) Configuration
 
 ### ACP Options
@@ -428,6 +529,7 @@ python ralph_orchestrator.py --help
 ## Next Steps
 
 - Learn about [AI Agents](agents.md) and their capabilities
+- Explore [ACE Learning](learning.md) for self-improving agents
 - Understand [Prompt Engineering](prompts.md) for better results
 - Explore [Cost Management](cost-management.md) strategies
 - Set up [Checkpointing](checkpointing.md) for recovery

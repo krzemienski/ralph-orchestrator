@@ -727,14 +727,38 @@ class RalphOrchestrator:
 
         # Trigger ACE learning from execution results
         if self.learning_adapter:
-            task_context = self.current_task if self.current_task else "iteration task"
+            task_context = self.current_task.get('description', 'iteration task') if isinstance(self.current_task, dict) else str(self.current_task or 'iteration task')
             output_text = response.output if response.output else ""
+
+            # Capture learning stats before
+            stats_before = self.learning_adapter.get_stats()
+            skills_before = stats_before.get('skill_count', 0)
+
+            # Execute learning
             self.learning_adapter.learn_from_execution(
                 task=task_context,
                 output=output_text,
                 success=response.success,
+                execution_trace=f"iteration={self.metrics.iterations}, adapter={self.current_adapter.name}"
             )
-            logger.debug(f"ACE learning triggered for iteration (success={response.success})")
+
+            # Capture learning stats after and log delta
+            stats_after = self.learning_adapter.get_stats()
+            skills_after = stats_after.get('skill_count', 0)
+            skills_delta = skills_after - skills_before
+
+            # Get recent learning events for this iteration
+            recent_events = self.learning_adapter.get_events(limit=5)
+            learning_event_summary = ", ".join([
+                f"{e['event_type']}({'✓' if e['success'] else '✗'})"
+                for e in recent_events
+            ]) if recent_events else "none"
+
+            logger.info(
+                f"ACE learning complete | iteration={self.metrics.iterations} | "
+                f"success={response.success} | skills={skills_after} (Δ{skills_delta:+d}) | "
+                f"events=[{learning_event_summary}]"
+            )
 
         return response.success
     

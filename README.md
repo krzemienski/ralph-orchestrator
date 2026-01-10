@@ -297,6 +297,85 @@ All agents maintain context across iterations via `.agent/scratchpad.md`. This f
 
 The scratchpad enables agents to continue from where they left off rather than restarting each iteration.
 
+## 🧠 ACE Learning (Self-Improving Agents)
+
+Ralph integrates with the [ACE (Agentic Context Engineering)](https://github.com/kayba-ai/agentic-context-engine) framework to enable self-improving agent loops. After each iteration, ACE analyzes what worked and what failed, then injects those learnings into subsequent iterations.
+
+### Quick Start with Learning
+
+```bash
+# Enable learning with default settings
+ralph run --learning "Your task here"
+
+# With custom learning model
+ralph run --learning --learning-model "claude-sonnet-4-5-20250929" "Your task"
+
+# With custom skillbook path
+ralph run --learning --skillbook-path ".agent/my-skillbook.json" "Your task"
+```
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Ralph + ACE Learning Loop                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. INJECT: Skillbook strategies added to prompt                │
+│     └─ Learned patterns from previous executions                │
+│                                                                  │
+│  2. EXECUTE: Agent runs iteration with enhanced context         │
+│     └─ Normal Ralph execution via Claude/Kiro/Gemini/etc        │
+│                                                                  │
+│  3. LEARN: ACE analyzes execution outcomes                      │
+│     ├─ Reflector extracts learnings                             │
+│     └─ SkillManager updates skillbook                           │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Configuration
+
+**CLI Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--learning` | `false` | Enable ACE learning loop |
+| `--learning-model` | `claude-sonnet-4-5-20250929` | Model for learning (reflection/skill management) |
+| `--skillbook-path` | `.agent/skillbook/skillbook.json` | Path to persist learned skills |
+
+**Config File (`ralph.yml`):**
+
+```yaml
+# ACE Learning Configuration
+learning:
+  enabled: true                              # Enable/disable learning
+  model: claude-sonnet-4-5-20250929          # Model for reflection
+  skillbook_path: .agent/skillbook/skillbook.json  # Skillbook location
+  async_learning: true                       # Learn in background (non-blocking)
+  max_skills: 100                            # Maximum skills to retain
+```
+
+### Installation
+
+ACE learning requires the optional `learning` dependency:
+
+```bash
+# Install with learning support
+pip install ralph-orchestrator[learning]
+
+# Or with uv
+uv pip install ralph-orchestrator[learning]
+```
+
+### Skillbook Persistence
+
+The skillbook (`.agent/skillbook/skillbook.json`) persists learned strategies across sessions:
+- Automatically created on first learning run
+- Updated after each iteration with new learnings
+- Injected into prompts to guide future iterations
+- Pruned automatically when `max_skills` is exceeded
+
 ### Supported Operations
 
 The ACP adapter handles these agent requests:
