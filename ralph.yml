@@ -35,6 +35,16 @@ dry_run: false                # Test mode without execution
 iteration_telemetry: true     # Enable per-iteration telemetry capture
 output_preview_length: 500    # Max chars for output preview in telemetry (truncated for privacy)
 
+# Learning configuration (ACE Framework)
+# Enables self-improving agent loops that learn from execution feedback
+# Requires: pip install ralph-orchestrator[learning]
+learning:
+  enabled: false                                    # Enable ACE learning
+  model: claude-sonnet-4-5-20250929                # Model for reflection/skill management
+  skillbook_path: .agent/skillbook/skillbook.json  # Skillbook storage location
+  async_learning: true                              # Run learning in background
+  max_skills: 100                                   # Maximum skills in skillbook
+
 # Safety settings
 max_prompt_size: 10485760     # Max prompt file size (10MB)
 allow_unsafe_paths: false     # Allow potentially unsafe prompt paths
