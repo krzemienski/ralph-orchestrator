@@ -114,3 +114,21 @@ The orchestrator will continue iterations until all components are implemented a
 - [x] Total tests: 48 passing (9 base + 11 config + 13 backup + 15 document)
 
 **Next iteration:** Implement organizers/photo_organizer.py
+
+### Iteration 5 - COMPLETE
+**Task:** Implement photo organizer module
+
+**Completed:**
+- [x] Implemented `organizers/photo_organizer.py` with:
+  - `PhotoOrganizer` class extending `BaseOrganizer`
+  - `PHOTO_EXTENSIONS` set with common photo formats (jpg, png, gif, bmp, heic, webp, etc.)
+  - Support for RAW formats (cr2, nef, arw, orf, rw2, dng)
+  - EXIF date extraction using PIL (DateTimeOriginal, DateTime tags)
+  - Filename date parsing (ISO format, compact format, underscore format)
+  - Fallback to file modification time when no date found
+  - Configurable date format for folder structure (default: "%Y/%m" = Year/Month)
+- [x] Wrote TDD tests (24 passing tests)
+- [x] Updated `organizers/__init__.py` with exports
+- [x] Total tests: 72 passing (9 base + 11 config + 13 backup + 15 document + 24 photo)
+
+**Next iteration:** Implement downloads organizer or main CLI interface
