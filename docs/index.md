@@ -46,6 +46,9 @@ Based on Huntley's technique, this implementation provides enterprise-grade safe
 - **🔌 ACP Protocol Support**
   Full Agent Client Protocol integration with permission handling, file/terminal operations, and session management
 
+- **🧠 ACE Learning**
+  Self-improving agents via [ACE framework](guide/learning.md) - agents learn from each iteration and improve over time
+
 </div>
 
 ## Quick Example

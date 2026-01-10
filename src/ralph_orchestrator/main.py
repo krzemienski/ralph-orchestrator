@@ -236,6 +236,14 @@ class RalphConfig:
     show_token_usage: bool = True  # Display token usage after iterations
     show_timestamps: bool = True  # Include timestamps in output
 
+    # Learning configuration (ACE Framework)
+    # Enables self-improving agent loops that learn from execution feedback
+    learning_enabled: bool = False  # Enable ACE learning
+    learning_model: str = "claude-sonnet-4-5-20250929"  # Model for Reflector/SkillManager
+    learning_skillbook_path: str = ".agent/skillbook/skillbook.json"  # Skillbook storage
+    learning_async: bool = True  # Run learning in background
+    learning_max_skills: int = 100  # Maximum skills in skillbook
+
     # Thread safety lock - not included in initialization/equals
     _lock: threading.RLock = field(
         default_factory=threading.RLock, init=False, repr=False, compare=False
@@ -336,6 +344,25 @@ class RalphConfig:
                     # Simple boolean enable/disable
                     adapter_configs[name] = AdapterConfig(enabled=bool(adapter_data))
             config_data['adapters'] = adapter_configs
+
+        # Process learning configuration (flatten nested structure)
+        if 'learning' in config_data:
+            learning_data = config_data.pop('learning')
+            if isinstance(learning_data, dict):
+                # Map nested keys to flat config keys
+                if 'enabled' in learning_data:
+                    config_data['learning_enabled'] = learning_data['enabled']
+                if 'model' in learning_data:
+                    config_data['learning_model'] = learning_data['model']
+                if 'skillbook_path' in learning_data:
+                    config_data['learning_skillbook_path'] = learning_data['skillbook_path']
+                # Handle both 'async' and 'async_learning' keys (async is reserved word)
+                if 'async_learning' in learning_data:
+                    config_data['learning_async'] = learning_data['async_learning']
+                elif 'async' in learning_data:
+                    config_data['learning_async'] = learning_data['async']
+                if 'max_skills' in learning_data:
+                    config_data['learning_max_skills'] = learning_data['max_skills']
 
         # Filter out unknown keys
         valid_keys = {f.name for f in cls.__dataclass_fields__.values()}
@@ -569,6 +596,27 @@ def main():
         help="Disable timestamps in output"
     )
 
+    # Learning options (ACE Framework)
+    parser.add_argument(
+        "--learning",
+        action="store_true",
+        help="Enable ACE learning loop (requires: pip install ralph-orchestrator[learning])"
+    )
+
+    parser.add_argument(
+        "--learning-model",
+        type=str,
+        default="claude-sonnet-4-5-20250929",
+        help="Model for ACE learning (default: claude-sonnet-4-5-20250929)"
+    )
+
+    parser.add_argument(
+        "--skillbook-path",
+        type=str,
+        default=".agent/skillbook/skillbook.json",
+        help="Path to skillbook JSON file (default: .agent/skillbook/skillbook.json)"
+    )
+
     parser.add_argument(
         "agent_args",
         nargs="*",
@@ -608,6 +656,10 @@ def main():
         output_verbosity=args.output_verbosity,
         show_token_usage=not args.no_token_usage,
         show_timestamps=not args.no_timestamps,
+        # Learning options (ACE Framework)
+        learning_enabled=args.learning,
+        learning_model=args.learning_model,
+        learning_skillbook_path=args.skillbook_path,
     )
     
     # Run orchestrator

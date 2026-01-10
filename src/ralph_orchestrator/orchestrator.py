@@ -19,6 +19,7 @@ from .adapters.kiro import KiroAdapter
 from .adapters.gemini import GeminiAdapter
 from .adapters.acp import ACPAdapter
 from .adapters.acp_models import ACPAdapterConfig
+from .learning import ACELearningAdapter, LearningConfig, ACE_AVAILABLE
 from .metrics import Metrics, CostTracker, IterationStats, TriggerReason
 from .safety import SafetyGuard
 from .context import ContextManager
@@ -124,7 +125,10 @@ class RalphOrchestrator:
         self.safety_guard = SafetyGuard(max_iterations, max_runtime, max_cost)
         self.context_manager = ContextManager(self.prompt_file, prompt_text=self.prompt_text)
         self.console = RalphConsole()  # Enhanced console output
-        
+
+        # Initialize ACE learning adapter (optional feature)
+        self.learning_adapter = self._initialize_learning_adapter()
+
         # Initialize adapters
         self.adapters = self._initialize_adapters()
         if self.primary_tool == "auto":
@@ -286,6 +290,53 @@ class RalphOrchestrator:
         cfg = self._config.get_adapter_config(name)
         return getattr(cfg, "enabled", True)
 
+    def _initialize_learning_adapter(self) -> ACELearningAdapter | None:
+        """Initialize ACE learning adapter if configured.
+
+        Returns:
+            ACELearningAdapter instance if learning is enabled and ACE available,
+            None otherwise. Logs appropriate messages for each case.
+        """
+        # Check if we have a config object with learning settings
+        if not self._config:
+            return None
+
+        # Extract learning settings from config
+        learning_enabled = getattr(self._config, 'learning_enabled', False)
+        if not learning_enabled:
+            logger.debug("ACE learning disabled in configuration")
+            return None
+
+        # Check if ACE is available
+        if not ACE_AVAILABLE:
+            logger.warning(
+                "ACE learning enabled but ace-framework not installed. "
+                "Install with: pip install ralph-orchestrator[learning]"
+            )
+            return None
+
+        # Create LearningConfig from RalphConfig settings
+        learning_config = LearningConfig(
+            enabled=True,
+            model=getattr(self._config, 'learning_model', 'claude-sonnet-4-5-20250929'),
+            skillbook_path=getattr(self._config, 'learning_skillbook_path', '.agent/skillbook/skillbook.json'),
+            async_learning=getattr(self._config, 'learning_async', True),
+            max_skills=getattr(self._config, 'learning_max_skills', 100),
+        )
+
+        # Initialize the adapter
+        adapter = ACELearningAdapter(learning_config)
+
+        if adapter.enabled:
+            logger.info(f"ACE learning initialized with model: {learning_config.model}")
+            if self.verbose:
+                self.console.print_info(f"ACE learning enabled (skillbook: {learning_config.skillbook_path})")
+        else:
+            logger.warning("ACE learning adapter failed to initialize")
+            return None
+
+        return adapter
+
     def _init_acp_adapter(self) -> ACPAdapter | None:
         """Initialize ACP adapter using config defaults + CLI overrides."""
         kwargs: dict[str, Any] = {}
@@ -381,6 +432,14 @@ class RalphOrchestrator:
         after the signal handler has done its synchronous cleanup.
         """
         try:
+            # Save ACE skillbook before shutdown
+            if self.learning_adapter:
+                try:
+                    self.learning_adapter.save_skillbook()
+                    logger.debug("Saved ACE skillbook during emergency cleanup")
+                except Exception as e:
+                    logger.debug(f"Failed to save skillbook during emergency cleanup: {e}")
+
             # Clean up adapter transport if available
             if hasattr(self.current_adapter, '_cleanup_transport'):
                 try:
@@ -594,7 +653,15 @@ class RalphOrchestrator:
         """Execute a single iteration asynchronously."""
         # Get the current prompt
         prompt = self.context_manager.get_prompt()
-        
+
+        # Inject ACE skillbook context if learning is enabled
+        if self.learning_adapter:
+            original_len = len(prompt)
+            prompt = self.learning_adapter.inject_context(prompt)
+            if len(prompt) > original_len:
+                skills_injected = len(prompt) - original_len
+                logger.debug(f"Injected {skills_injected} chars of skillbook context")
+
         # Extract tasks from prompt if task queue is empty
         if not self.task_queue and not self.current_task:
             self._extract_tasks_from_prompt(prompt)
@@ -657,7 +724,42 @@ class RalphOrchestrator:
             output_lower = response.output.lower() if response.output else ""
             if any(word in output_lower for word in ['completed', 'finished', 'done', 'committed']):
                 self._update_current_task('completed')
-        
+
+        # Trigger ACE learning from execution results
+        if self.learning_adapter:
+            task_context = self.current_task.get('description', 'iteration task') if isinstance(self.current_task, dict) else str(self.current_task or 'iteration task')
+            output_text = response.output if response.output else ""
+
+            # Capture learning stats before
+            stats_before = self.learning_adapter.get_stats()
+            skills_before = stats_before.get('skill_count', 0)
+
+            # Execute learning
+            self.learning_adapter.learn_from_execution(
+                task=task_context,
+                output=output_text,
+                success=response.success,
+                execution_trace=f"iteration={self.metrics.iterations}, adapter={self.current_adapter.name}"
+            )
+
+            # Capture learning stats after and log delta
+            stats_after = self.learning_adapter.get_stats()
+            skills_after = stats_after.get('skill_count', 0)
+            skills_delta = skills_after - skills_before
+
+            # Get recent learning events for this iteration
+            recent_events = self.learning_adapter.get_events(limit=5)
+            learning_event_summary = ", ".join([
+                f"{e['event_type']}({'✓' if e['success'] else '✗'})"
+                for e in recent_events
+            ]) if recent_events else "none"
+
+            logger.info(
+                f"ACE learning complete | iteration={self.metrics.iterations} | "
+                f"success={response.success} | skills={skills_after} (Δ{skills_delta:+d}) | "
+                f"events=[{learning_event_summary}]"
+            )
+
         return response.success
     
     def _estimate_tokens(self, text: str) -> int:
@@ -693,6 +795,14 @@ class RalphOrchestrator:
     async def _create_checkpoint(self):
         """Create a git checkpoint asynchronously."""
         try:
+            # Save ACE skillbook before checkpoint (ensures learned skills are persisted)
+            if self.learning_adapter:
+                try:
+                    self.learning_adapter.save_skillbook()
+                    logger.debug("Saved ACE skillbook before checkpoint")
+                except Exception as e:
+                    logger.warning(f"Failed to save skillbook before checkpoint: {e}")
+
             # Stage all changes
             proc = await asyncio.create_subprocess_exec(
                 "git", "add", "-A",
@@ -794,6 +904,14 @@ class RalphOrchestrator:
             for tool, cost in self.cost_tracker.costs_by_tool.items():
                 self.console.print_info(f"  {tool}: ${cost:.4f}")
 
+        # Display ACE learning stats if enabled
+        if self.learning_adapter:
+            learning_stats = self.learning_adapter.get_stats()
+            self.console.print_info("ACE Learning:")
+            self.console.print_info(f"  Skills learned: {learning_stats.get('skills_count', 0)}")
+            self.console.print_info(f"  Reflections: {learning_stats.get('reflections_count', 0)}")
+            self.console.print_info(f"  Skillbook: {learning_stats.get('skillbook_path', 'N/A')}")
+
         # Save metrics to file with enhanced per-iteration telemetry
         metrics_dir = Path(".agent") / "metrics"
         metrics_dir.mkdir(parents=True, exist_ok=True)
@@ -822,7 +940,9 @@ class RalphOrchestrator:
             "analysis": {
                 "avg_iteration_duration": self.iteration_stats.get_average_duration() if self.iteration_stats else 0,
                 "success_rate": self.iteration_stats.get_success_rate() if self.iteration_stats else 0,
-            }
+            },
+            # ACE learning metrics (if enabled)
+            "learning": self.learning_adapter.get_stats() if self.learning_adapter else {},
         }
 
         metrics_file.write_text(json.dumps(metrics_data, indent=2))
