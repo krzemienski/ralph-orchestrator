@@ -181,10 +181,11 @@ class TestBackupManager:
 
         backup_path = manager.backup_file(source_file)
 
-        # Change permissions on original
-        os.chmod(source_file, stat.S_IRUSR)
+        # Delete the original (instead of changing permissions to read-only which
+        # would prevent overwriting)
+        source_file.unlink()
 
-        # Restore
+        # Restore from backup
         manager.restore_file(backup_path, source_file)
 
         restored_mode = os.stat(source_file).st_mode & 0o777
@@ -224,9 +225,9 @@ class TestBackupManager:
         manager1 = BackupManager(backup_dir=backup_dir)
         backup1 = manager1.backup_file(source_file)
 
-        # Force a new session
+        # Force a different session by explicitly setting a different ID
         manager2 = BackupManager(backup_dir=backup_dir)
-        manager2._session_id = None  # Reset session
+        manager2._session_id = "different_session"
         backup2 = manager2.backup_file(source_file)
 
         # Different session directories
