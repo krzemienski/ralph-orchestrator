@@ -789,7 +789,28 @@ Examples:
             action="store_true",
             help="Enable verbose output"
         )
-        
+
+        # Logging options (Component 2: Full Log Streaming)
+        p.add_argument(
+            "--log-level",
+            type=str,
+            choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+            default="INFO",
+            help="Log level for stream logging (default: INFO)"
+        )
+
+        p.add_argument(
+            "--stream-logs",
+            action="store_true",
+            help="Enable real-time log streaming to console, file, and FIFO pipe"
+        )
+
+        p.add_argument(
+            "--no-fifo",
+            action="store_true",
+            help="Disable FIFO pipe output (useful if FIFO causes issues)"
+        )
+
         p.add_argument(
             "-d", "--dry-run",
             action="store_true",
@@ -876,7 +897,28 @@ Examples:
             action="store_true",
             help="Allow potentially unsafe prompt paths"
         )
-        
+
+        # Learning options (ACE Framework)
+        p.add_argument(
+            "--learning",
+            action="store_true",
+            help="Enable ACE learning loop (requires: pip install ralph-orchestrator[learning])"
+        )
+
+        p.add_argument(
+            "--learning-model",
+            type=str,
+            default="claude-sonnet-4-5-20250929",
+            help="Model for ACE learning (default: claude-sonnet-4-5-20250929)"
+        )
+
+        p.add_argument(
+            "--skillbook-path",
+            type=str,
+            default=".agent/skillbook/skillbook.json",
+            help="Path to skillbook JSON file (default: .agent/skillbook/skillbook.json)"
+        )
+
         # Collect remaining arguments for agent
         p.add_argument(
             "agent_args",
@@ -889,7 +931,34 @@ Examples:
 
     # Apply convenience shortcuts (may adjust args.agent/acp settings)
     _apply_codex_shortcut(args, parser)
-    
+
+    # Early validation: Check API key for ACE learning
+    if getattr(args, 'learning', False):
+        model = getattr(args, 'learning_model', 'claude-sonnet-4-5-20250929').lower()
+        api_key_found = False
+        missing_key_hint = ""
+
+        if 'claude' in model or 'anthropic' in model:
+            api_key_found = bool(os.environ.get('ANTHROPIC_API_KEY'))
+            missing_key_hint = "ANTHROPIC_API_KEY"
+        elif 'gpt' in model or 'openai' in model:
+            api_key_found = bool(os.environ.get('OPENAI_API_KEY'))
+            missing_key_hint = "OPENAI_API_KEY"
+        elif 'gemini' in model or 'google' in model:
+            api_key_found = bool(os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY'))
+            missing_key_hint = "GOOGLE_API_KEY or GEMINI_API_KEY"
+        else:
+            # Default: try anthropic
+            api_key_found = bool(os.environ.get('ANTHROPIC_API_KEY'))
+            missing_key_hint = "ANTHROPIC_API_KEY"
+
+        if not api_key_found:
+            _console.print_warning(f"ACE Learning Warning: {missing_key_hint} not found in environment")
+            _console.print_info(f"Learning model '{model}' requires an API key.")
+            _console.print_info("Set the environment variable before running:")
+            _console.print_info(f"  export {missing_key_hint}='your-api-key'")
+            _console.print_info("Learning will be disabled for this run.")
+
     # Handle commands
     command = args.command if args.command else 'run'
     
@@ -983,7 +1052,7 @@ Examples:
                 config.dry_run = True
             if args.allow_unsafe_paths:
                 config.allow_unsafe_paths = True
-                
+
             # Handle "no-" flags (if flag is set, feature is disabled)
             if args.no_git:
                 config.git_checkpoint = False
@@ -991,6 +1060,22 @@ Examples:
                 config.archive_prompts = False
             if args.no_metrics:
                 config.enable_metrics = False
+
+            # Handle learning flags
+            if getattr(args, 'learning', False):
+                config.learning_enabled = True
+            if hasattr(args, 'learning_model') and args.learning_model:
+                config.learning_model = args.learning_model
+            if hasattr(args, 'skillbook_path') and args.skillbook_path:
+                config.learning_skillbook_path = args.skillbook_path
+
+            # Handle stream logging flags
+            if getattr(args, 'stream_logs', False):
+                config.stream_logs_enabled = True
+            if hasattr(args, 'log_level') and args.log_level:
+                config.stream_log_level = args.log_level
+            if getattr(args, 'no_fifo', False):
+                config.stream_fifo_enabled = False
 
             # Merge agent args if provided
             if hasattr(args, 'agent_args') and args.agent_args:
@@ -1044,10 +1129,26 @@ Examples:
             config_kwargs['archive_prompts'] = False
         if args.no_metrics:
             config_kwargs['enable_metrics'] = False
-            
+
+        # Handle learning flags
+        if getattr(args, 'learning', False):
+            config_kwargs['learning_enabled'] = True
+        if hasattr(args, 'learning_model') and args.learning_model:
+            config_kwargs['learning_model'] = args.learning_model
+        if hasattr(args, 'skillbook_path') and args.skillbook_path:
+            config_kwargs['learning_skillbook_path'] = args.skillbook_path
+
+        # Handle stream logging flags
+        if getattr(args, 'stream_logs', False):
+            config_kwargs['stream_logs_enabled'] = True
+        if hasattr(args, 'log_level') and args.log_level:
+            config_kwargs['stream_log_level'] = args.log_level
+        if getattr(args, 'no_fifo', False):
+            config_kwargs['stream_fifo_enabled'] = False
+
         if hasattr(args, 'agent_args') and args.agent_args:
             config_kwargs['agent_args'] = args.agent_args
-            
+
         # Instantiate with gathered arguments
         config = RalphConfig(**config_kwargs)
 
@@ -1089,6 +1190,21 @@ Examples:
         _console.print_info(f"  Max iterations: {config.max_iterations}")
         _console.print_info(f"  Max runtime: {config.max_runtime}s")
         _console.print_info(f"  Max cost: ${config.max_cost:.2f}")
+
+        # Test stream logging in dry-run mode if enabled
+        if getattr(config, 'stream_logs_enabled', False):
+            from ralph_orchestrator.logging.stream_logger import create_stream_logger
+            test_logger = create_stream_logger(
+                log_level=getattr(config, 'stream_log_level', None) or "INFO",
+                enable_console=True,
+                enable_file=True,
+                enable_fifo=getattr(config, 'stream_fifo_enabled', True)
+            )
+            test_logger.info("dry_run", "Stream logging validation - dry run test entry")
+            test_logger.debug("dry_run", f"Config: agent={config.agent.value}, max_iter={config.max_iterations}")
+            _console.print_info(f"  Log file: {test_logger.log_file_path}")
+            test_logger.cleanup()
+
         sys.exit(0)
     
     try:

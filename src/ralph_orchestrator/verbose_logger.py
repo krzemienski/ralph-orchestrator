@@ -9,7 +9,10 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TextIO, cast
+from typing import Any, Dict, List, Optional, TextIO, cast, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ralph_orchestrator.logging.tool_tracker import ToolCallTracker
 
 try:
     from rich.console import Console
@@ -118,6 +121,8 @@ class VerboseLogger:
     - Re-entrancy protection (prevent logging loops)
     - Console output with Rich library integration
     - Thread-safe operations
+    - Optional StreamLogger integration for real-time log streaming
+    - ToolCallTracker for tool call timing and visibility
 
     This logger captures all verbose output including:
     - Claude SDK messages with full content
@@ -129,7 +134,7 @@ class VerboseLogger:
 
     _metrics: Dict[str, Any]
 
-    def __init__(self, log_dir: Optional[str] = None) -> None:
+    def __init__(self, log_dir: Optional[str] = None, stream_logger: Optional[Any] = None) -> None:
         """
         Initialize verbose logger with thread safety.
 
@@ -200,6 +205,17 @@ class VerboseLogger:
             "total_tokens": 0,
             "total_cost": 0.0,
         }
+
+        # StreamLogger integration for real-time log streaming
+        self.stream_logger = stream_logger
+
+        # ToolCallTracker for tool call timing and visibility
+        # Only create if stream_logger is available for real-time streaming
+        if stream_logger:
+            from ralph_orchestrator.logging.tool_tracker import ToolCallTracker
+            self.tool_tracker: Optional["ToolCallTracker"] = ToolCallTracker(stream_logger)
+        else:
+            self.tool_tracker = None
 
     def _can_log_safely(self) -> bool:
         """
@@ -416,6 +432,12 @@ class VerboseLogger:
         if not self._enter_logging_context():
             return
 
+        # Emit START event through ToolCallTracker if available
+        tool_event = None
+        if self.tool_tracker:
+            args_dict = input_data if isinstance(input_data, dict) else {"input": str(input_data)[:200]}
+            tool_event = self.tool_tracker.start_call(tool_name, args_dict)
+
         try:
             if self._lock.locked():
                 return
@@ -489,6 +511,14 @@ class VerboseLogger:
             except Exception:
                 pass
         finally:
+            # Emit END event through ToolCallTracker if available
+            if self.tool_tracker and tool_event:
+                result_str = str(result)[:200] if result else None
+                self.tool_tracker.end_call(
+                    tool_event,
+                    result=result_str,
+                    success=result is not None
+                )
             self._exit_logging_context()
 
     async def log_error(

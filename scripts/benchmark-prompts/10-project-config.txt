@@ -1,0 +1,18 @@
+Add a new configuration option `checkpoint_interval` to control how often checkpoints are created.
+
+The option should:
+1. Be configurable via CLI (`--checkpoint-interval N`)
+2. Be configurable via environment variable (`RALPH_CHECKPOINT_INTERVAL`)
+3. Be configurable via ralph.yml config file
+4. Default to 1 (checkpoint every iteration)
+
+Modify these files:
+- `src/ralph_orchestrator/main.py` - Add CLI argument
+- `src/ralph_orchestrator/config.py` or wherever RalphConfig is defined - Add config field
+- `src/ralph_orchestrator/orchestrator.py` - Use the setting to control checkpoint frequency
+
+Requirements:
+- Follow existing patterns for configuration options
+- Include validation (must be positive integer)
+- Add appropriate help text
+- Document the option in a code comment

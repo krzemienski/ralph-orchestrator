@@ -244,6 +244,12 @@ class RalphConfig:
     learning_async: bool = True  # Run learning in background
     learning_max_skills: int = 100  # Maximum skills in skillbook
 
+    # Stream logging configuration (Component 2: Full Log Streaming)
+    # Enables structured logging to console, file, and FIFO pipe
+    stream_logs_enabled: bool = False  # Enable stream logging
+    stream_log_level: str = "INFO"  # Log level: DEBUG, INFO, WARNING, ERROR
+    stream_fifo_enabled: bool = True  # Enable FIFO pipe output
+
     # Thread safety lock - not included in initialization/equals
     _lock: threading.RLock = field(
         default_factory=threading.RLock, init=False, repr=False, compare=False
@@ -624,10 +630,42 @@ def main():
     )
     
     args = parser.parse_args()
-    
+
     # Configure logging level
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    # Early validation: Check API key for ACE learning
+    if args.learning:
+        import os
+        model = args.learning_model.lower()
+        api_key_found = False
+        missing_key_hint = ""
+
+        if 'claude' in model or 'anthropic' in model:
+            api_key_found = bool(os.environ.get('ANTHROPIC_API_KEY'))
+            missing_key_hint = "ANTHROPIC_API_KEY"
+        elif 'gpt' in model or 'openai' in model:
+            api_key_found = bool(os.environ.get('OPENAI_API_KEY'))
+            missing_key_hint = "OPENAI_API_KEY"
+        elif 'gemini' in model or 'google' in model:
+            api_key_found = bool(os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY'))
+            missing_key_hint = "GOOGLE_API_KEY or GEMINI_API_KEY"
+        else:
+            # Default: check for any common API key
+            api_key_found = bool(
+                os.environ.get('ANTHROPIC_API_KEY') or
+                os.environ.get('OPENAI_API_KEY') or
+                os.environ.get('GOOGLE_API_KEY')
+            )
+            missing_key_hint = "ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY"
+
+        if not api_key_found:
+            print(f"\n⚠️  ACE Learning Warning: {missing_key_hint} not found in environment", file=sys.stderr)
+            print(f"   Learning model '{args.learning_model}' requires an API key.", file=sys.stderr)
+            print(f"   Set the environment variable before running:", file=sys.stderr)
+            print(f"   export {missing_key_hint.split(',')[0].split(' ')[0]}='your-api-key'\n", file=sys.stderr)
+            # Don't exit - let the adapter handle it and potentially fall back gracefully
     
     # Create config
     config = RalphConfig(

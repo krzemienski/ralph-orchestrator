@@ -1,0 +1,22 @@
+Create a utility script `scripts/path_utils.py` that handles file paths correctly across Windows and Unix.
+
+The script should include:
+
+1. `normalize_path(path: str) -> Path` - Convert any path string to a proper Path object
+2. `ensure_directory(path: str) -> Path` - Create directory if it doesn't exist, return Path
+3. `safe_join(*parts: str) -> Path` - Safely join path parts (like os.path.join but using pathlib)
+4. `get_relative_to_project(path: str) -> Path` - Get path relative to project root
+
+Common mistakes to fix in the implementation:
+- Don't use string concatenation for paths (use Path / operator)
+- Don't hardcode path separators ('/' or '\')
+- Handle both absolute and relative paths
+- Handle paths with spaces correctly
+- Use Path.resolve() to handle '..' and symlinks
+
+Requirements:
+- Use pathlib.Path exclusively (no os.path)
+- Include type hints
+- Include docstrings
+- Add a test section in `if __name__ == "__main__":` that tests each function
+- Handle edge cases (empty string, None, etc.)

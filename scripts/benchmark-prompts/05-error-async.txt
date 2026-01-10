@@ -1,0 +1,20 @@
+Create a test file `tests/test_async_patterns.py` that demonstrates correct async/await patterns.
+
+The file should include:
+
+1. An async test function that properly awaits coroutines
+2. A test that uses `pytest.mark.asyncio` decorator
+3. A test that properly handles async context managers
+4. A test that properly handles async iterators
+
+Common mistakes to avoid (and demonstrate the correct way):
+- Don't forget `async` keyword on test functions that use await
+- Don't forget to await coroutines
+- Don't use sync calls inside async functions where async versions exist
+- Properly use `async with` for async context managers
+
+Requirements:
+- Use pytest-asyncio for async test support
+- Include comments explaining why each pattern is correct
+- Each test should actually test something meaningful (not just demonstrate syntax)
+- Use asyncio.sleep(0.01) to simulate async operations

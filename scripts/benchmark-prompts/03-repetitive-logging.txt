@@ -1,0 +1,22 @@
+Add structured logging to the file `src/ralph_orchestrator/learning/ace_adapter.py`.
+
+Find all methods that don't have logging and add appropriate log statements:
+
+1. Add `logger.debug()` at the start of each method showing method name and key parameters
+2. Add `logger.info()` for important state changes (skillbook loaded, skills learned, etc.)
+3. Add `logger.warning()` for recoverable error conditions
+4. Add `logger.error()` for failures with stack traces
+
+Use this pattern:
+```python
+logger.debug(f"method_name called | param1={value1} | param2={value2}")
+logger.info(f"State changed | old={old} | new={new}")
+logger.warning(f"Recoverable issue | reason={reason}")
+logger.error(f"Operation failed | error={str(e)}", exc_info=True)
+```
+
+Requirements:
+- Use the existing logger if one is defined, or create one with `logging.getLogger(__name__)`
+- Keep log messages concise but informative
+- Include relevant context (iteration number, skill counts, etc.) in log messages
+- Do NOT add excessive logging that would spam the logs

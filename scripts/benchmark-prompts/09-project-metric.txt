@@ -1,0 +1,18 @@
+Add a new metric `rollback_count` to track how many times checkpoints were rolled back during orchestration.
+
+Modify the metrics system in `src/ralph_orchestrator/metrics.py` to:
+
+1. Add `rollback_count: int = 0` to the appropriate dataclass
+2. Add a method to increment the rollback count
+3. Include rollback_count in the metrics summary output
+
+Then modify `src/ralph_orchestrator/orchestrator.py` to:
+
+1. Increment the rollback count when a checkpoint rollback occurs
+2. Include rollback_count in the final summary
+
+Requirements:
+- Follow the existing patterns in metrics.py
+- Ensure the metric is properly initialized
+- Include the metric in JSON output if metrics are exported
+- Add appropriate logging when rollbacks occur

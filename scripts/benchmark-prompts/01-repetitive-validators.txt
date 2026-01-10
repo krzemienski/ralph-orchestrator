@@ -1,0 +1,15 @@
+Create 4 Python validation functions in a new file `src/ralph_orchestrator/utils/validators.py`:
+
+1. `validate_email(value: str) -> bool` - Validate email format using regex
+2. `validate_phone(value: str) -> bool` - Validate US phone number format (xxx-xxx-xxxx or (xxx) xxx-xxxx)
+3. `validate_url(value: str) -> bool` - Validate HTTP/HTTPS URL format
+4. `validate_uuid(value: str) -> bool` - Validate UUID v4 format
+
+Requirements:
+- Each function should have a docstring explaining what it validates
+- Each function should return True for valid input, False for invalid
+- Use the `re` module for regex patterns
+- Include type hints
+- Do NOT use external validation libraries
+
+After creating the functions, add a simple test at the bottom of the file in an `if __name__ == "__main__":` block that tests each function with one valid and one invalid input.

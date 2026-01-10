@@ -1,0 +1,22 @@
+Create a new adapter called `RooAdapter` in `src/ralph_orchestrator/adapters/roo.py` following the existing adapter patterns.
+
+Study the existing adapters (particularly `claude.py` and `base.py`) and create a new adapter that:
+
+1. Inherits from `ToolAdapter` base class
+2. Implements the required `execute(prompt: str, **kwargs) -> ToolResponse` method
+3. Implements `aexecute` for async support
+4. Has proper `__init__` with configuration
+5. Uses the same logging patterns as other adapters
+6. Includes proper type hints
+
+The RooAdapter should:
+- Be a placeholder that returns a mock response (we don't have the actual Roo CLI)
+- Follow the exact same patterns as ClaudeAdapter
+- Include docstrings matching the style of other adapters
+- Be properly registered (add to adapters/__init__.py exports)
+
+Requirements:
+- Match the coding style of existing adapters exactly
+- Include all standard adapter methods
+- Add appropriate error handling
+- Include the ABOUTME comment at the top of the file

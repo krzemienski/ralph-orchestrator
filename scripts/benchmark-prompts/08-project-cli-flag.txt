@@ -1,0 +1,19 @@
+Add a new CLI flag `--dry-run` to the ralph CLI that shows what would be executed without actually running.
+
+Modify `src/ralph_orchestrator/main.py` to:
+
+1. Add the `--dry-run` argument to the argument parser
+2. Pass the flag through to RalphConfig
+3. Handle the flag in the orchestration logic to show plan without executing
+
+When `--dry-run` is active:
+- Print the prompt that would be sent
+- Print the adapter that would be used
+- Print the configuration (max iterations, model, etc.)
+- Print "Dry run mode - no execution" and exit cleanly
+
+Requirements:
+- Follow the existing CLI flag patterns in main.py
+- Add appropriate help text for the flag
+- The flag should work with all adapters
+- Include a test case suggestion in comments

@@ -9,8 +9,9 @@ agents to improve through in-context learning instead of fine-tuning.
 
 The adapter provides:
 - inject_context(): Add skillbook strategies to prompts
-- learn_from_execution(): Update skillbook based on results
+- learn_from_execution(): Update skillbook based on results (async or sync)
 - save/load skillbook persistence
+- shutdown(): Graceful shutdown with skillbook persistence
 
 ACE Framework is an optional dependency. If not installed, the adapter
 gracefully disables learning without affecting other functionality.
@@ -18,7 +19,10 @@ gracefully disables learning without affecting other functionality.
 Reference: https://github.com/kayba-ai/agentic-context-engine
 """
 
+import atexit
 import logging
+import os
+import queue
 import threading
 import time
 from pathlib import Path
@@ -112,23 +116,53 @@ if not ACE_AVAILABLE:
 
 
 @dataclass
+class LearningTask:
+    """A learning task to be processed by the async worker.
+
+    Attributes:
+        task: The prompt/task that was executed
+        output: Agent output text
+        success: Whether iteration succeeded
+        error: Error message if failed
+        execution_trace: Execution trace for analysis
+        iteration: The iteration number this task came from
+        created_at: When this task was created
+    """
+    task: str
+    output: str
+    success: bool
+    error: Optional[str] = None
+    execution_trace: str = ""
+    iteration: int = 0
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + 'Z')
+
+
+@dataclass
 class LearningConfig:
     """Configuration for ACE learning.
 
     Attributes:
         enabled: Whether learning is enabled
-        model: Model to use for Reflector/SkillManager (e.g., claude-sonnet-4-5-20250929)
+        model: Model to use for Reflector/SkillManager (defaults to gpt-4o-mini for efficiency)
         skillbook_path: Path to persist skillbook JSON
         async_learning: Whether to run learning in background (not blocking iterations)
         max_skills: Maximum number of skills to keep in skillbook
         max_tokens: Max tokens for ACE LLM calls
+        prune_threshold: Effectiveness score below which to prune skills
+        deduplication_enabled: Enable embedding-based skill deduplication
+        similarity_threshold: Cosine similarity threshold for deduplication
+        worker_timeout: Timeout in seconds for async worker to complete
     """
     enabled: bool = False
-    model: str = "claude-sonnet-4-5-20250929"
+    model: str = "gpt-4o-mini"  # Efficient model for ACE operations
     skillbook_path: str = ".agent/skillbook/skillbook.json"
     async_learning: bool = True
     max_skills: int = 100
     max_tokens: int = 2048
+    prune_threshold: float = -0.3  # Prune skills with negative effectiveness
+    deduplication_enabled: bool = True
+    similarity_threshold: float = 0.85
+    worker_timeout: float = 30.0  # Max seconds to wait for worker on shutdown
 
 
 class ACELearningAdapter:
@@ -176,6 +210,12 @@ class ACELearningAdapter:
         self.config = config
         self._skillbook_lock = threading.Lock()
 
+        # Async learning worker components
+        self._learning_queue: queue.Queue = queue.Queue()
+        self._worker_thread: Optional[threading.Thread] = None
+        self._shutdown_event = threading.Event()
+        self._worker_running = False
+
         # Telemetry tracking
         self._events: List[LearningEvent] = []
         self._stats = {
@@ -183,9 +223,13 @@ class ACELearningAdapter:
             'skills_added': 0,
             'skills_updated': 0,
             'skills_pruned': 0,
+            'skills_deduplicated': 0,
             'inject_count': 0,
             'errors_count': 0,
             'total_learning_time_ms': 0.0,
+            'async_tasks_queued': 0,
+            'async_tasks_processed': 0,
+            'rollback_learnings': 0,
         }
 
         # Check if ACE is available
@@ -231,10 +275,45 @@ class ACELearningAdapter:
             self.skillbook = Skillbook()
 
         # Initialize LLM client for ACE (separate from main adapter)
+        # CRITICAL: Explicitly read API key from environment at initialization time
+        # LiteLLM's auto-detection can fail in subprocess/thread contexts
         try:
+            # Determine which API key to use based on model
+            api_key = None
+            api_key_env_var = None
+
+            if 'claude' in config.model.lower() or 'anthropic' in config.model.lower():
+                api_key = os.environ.get('ANTHROPIC_API_KEY')
+                api_key_env_var = 'ANTHROPIC_API_KEY'
+            elif 'gpt' in config.model.lower() or 'openai' in config.model.lower():
+                api_key = os.environ.get('OPENAI_API_KEY')
+                api_key_env_var = 'OPENAI_API_KEY'
+            elif 'gemini' in config.model.lower() or 'google' in config.model.lower():
+                api_key = os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY')
+                api_key_env_var = 'GOOGLE_API_KEY or GEMINI_API_KEY'
+            else:
+                # Try common API keys
+                api_key = (
+                    os.environ.get('ANTHROPIC_API_KEY') or
+                    os.environ.get('OPENAI_API_KEY') or
+                    os.environ.get('GOOGLE_API_KEY')
+                )
+                api_key_env_var = 'ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY'
+
+            if not api_key:
+                logger.error(
+                    f"ACE learning requires {api_key_env_var} environment variable for model '{config.model}'. "
+                    "Please set the appropriate API key in your environment."
+                )
+                self._learning_enabled = False
+                return
+
+            logger.debug(f"ACE learning using API key from {api_key_env_var} ({len(api_key)} chars)")
+
             self.llm = LiteLLMClient(
                 model=config.model,
-                max_tokens=config.max_tokens
+                max_tokens=config.max_tokens,
+                api_key=api_key  # Explicit pass-through to avoid environment detection issues
             )
         except Exception as e:
             logger.warning(f"Failed to initialize learning LLM client: {e}")
@@ -257,6 +336,13 @@ class ACELearningAdapter:
             self._learning_enabled = False
             return
 
+        # Start async learning worker if enabled
+        if config.async_learning:
+            self._start_worker()
+
+        # Register shutdown handler to save skillbook on exit
+        atexit.register(self._atexit_handler)
+
         # Log successful initialization
         init_duration = (time.time() - init_start) * 1000
         skill_count = len(list(self.skillbook.skills()))
@@ -270,11 +356,13 @@ class ACELearningAdapter:
                 'initial_skills': skill_count,
                 'max_skills': config.max_skills,
                 'async_learning': config.async_learning,
+                'deduplication_enabled': config.deduplication_enabled,
             }
         )
         logger.info(
             f"ACE learning initialized | model={config.model} | "
-            f"skills={skill_count} | path={config.skillbook_path}"
+            f"skills={skill_count} | path={config.skillbook_path} | "
+            f"async={config.async_learning}"
         )
 
     def _record_event(
@@ -307,6 +395,319 @@ class ACELearningAdapter:
             logger.warning(f"Learning event (failed): {event}")
 
         return event
+
+    def _start_worker(self) -> None:
+        """Start the async learning worker thread.
+
+        The worker processes learning tasks from a queue in the background,
+        preventing learning operations from blocking the main orchestration loop.
+        """
+        if self._worker_running:
+            return
+
+        self._shutdown_event.clear()
+        self._worker_thread = threading.Thread(
+            target=self._worker_loop,
+            name="ACELearningWorker",
+            daemon=True  # Allow clean exit even if worker is running
+        )
+        self._worker_running = True
+        self._worker_thread.start()
+        logger.debug("ACE learning worker thread started")
+
+    def _worker_loop(self) -> None:
+        """Main loop for the async learning worker.
+
+        Processes learning tasks from the queue until shutdown is signaled.
+        Each task is processed with full error handling to prevent worker crashes.
+        """
+        while not self._shutdown_event.is_set():
+            try:
+                # Wait for a task with timeout (allows checking shutdown event)
+                try:
+                    learning_task: LearningTask = self._learning_queue.get(timeout=1.0)
+                except queue.Empty:
+                    continue
+
+                # Process the learning task
+                self._process_learning_task(learning_task)
+                self._stats['async_tasks_processed'] += 1
+                self._learning_queue.task_done()
+
+            except Exception as e:
+                logger.warning(f"ACE learning worker error (non-fatal): {e}")
+                self._stats['errors_count'] += 1
+
+        logger.debug("ACE learning worker thread exiting")
+        self._worker_running = False
+
+    def _process_learning_task(self, task: LearningTask) -> None:
+        """Process a single learning task (runs in worker thread).
+
+        This is the core learning logic extracted from learn_from_execution
+        to run in the background worker thread.
+
+        Args:
+            task: The learning task to process
+        """
+        learn_start = time.time()
+        skills_before = 0
+
+        with self._skillbook_lock:
+            try:
+                skills_before = len(list(self.skillbook.skills()))
+
+                # Build rich execution trace for better reflection
+                execution_trace = self._build_rich_execution_trace(task)
+
+                # Create AgentOutput for Reflector interface
+                agent_output = AgentOutput(
+                    reasoning=execution_trace,
+                    final_answer=task.output[:2000] if task.output else "",
+                    skill_ids=[],  # External adapter, no pre-selected skills
+                    raw={
+                        "success": task.success,
+                        "has_error": task.error is not None,
+                        "iteration": task.iteration,
+                        "task_preview": task.task[:200] if task.task else "",
+                    }
+                )
+
+                # Build feedback string
+                status = "succeeded" if task.success else "failed"
+                feedback = f"Iteration {task.iteration} {status}"
+                if task.error:
+                    feedback += f"\nError: {task.error[:500]}"
+
+                # Run Reflector with timing
+                reflect_start = time.time()
+                reflection = self.reflector.reflect(
+                    question=task.task[:1000],
+                    agent_output=agent_output,
+                    skillbook=self.skillbook,
+                    ground_truth=None,
+                    feedback=feedback
+                )
+                reflect_duration = (time.time() - reflect_start) * 1000
+
+                # Record reflection event
+                self._stats['reflections_count'] += 1
+                self._record_event(
+                    LEARNING_EVENTS['REFLECT'],
+                    reflect_duration,
+                    success=True,
+                    details={
+                        'task_success': task.success,
+                        'task_len': len(task.task),
+                        'output_len': len(task.output) if task.output else 0,
+                        'iteration': task.iteration,
+                        'has_execution_trace': bool(task.execution_trace),
+                        'reflection_summary': str(reflection)[:200] if reflection else None,
+                    }
+                )
+
+                # Run SkillManager with timing
+                skill_mgr_start = time.time()
+                skill_manager_output = self.skill_manager.update_skills(
+                    reflection=reflection,
+                    skillbook=self.skillbook,
+                    question_context=f"task: {task.task[:500]}",
+                    progress=f"Iteration {task.iteration}: {task.task[:200]}"
+                )
+                skill_mgr_duration = (time.time() - skill_mgr_start) * 1000
+
+                # Apply skill updates with deduplication
+                self._apply_skill_update_with_deduplication(skill_manager_output.update)
+
+                # Calculate skill changes
+                skills_after = len(list(self.skillbook.skills()))
+                skills_delta = skills_after - skills_before
+
+                # Record skill update event
+                if skills_delta > 0:
+                    self._stats['skills_added'] += skills_delta
+                elif skills_delta < 0:
+                    self._stats['skills_pruned'] += abs(skills_delta)
+                else:
+                    self._stats['skills_updated'] += 1  # Assume update if no net change
+
+                self._record_event(
+                    LEARNING_EVENTS['SKILL_UPDATE'],
+                    skill_mgr_duration,
+                    success=True,
+                    details={
+                        'skills_before': skills_before,
+                        'skills_after': skills_after,
+                        'skills_delta': skills_delta,
+                        'update_type': getattr(skill_manager_output.update, 'type', 'unknown'),
+                        'iteration': task.iteration,
+                    }
+                )
+
+                # Enforce max_skills limit
+                self._prune_skills_if_needed()
+
+                # Calculate total learning time
+                total_duration = (time.time() - learn_start) * 1000
+                self._stats['total_learning_time_ms'] += total_duration
+
+                # Log comprehensive learning summary
+                logger.info(
+                    f"ACE learning complete | iteration={task.iteration} | "
+                    f"skills={skills_after} (Δ{skills_delta:+d}) | "
+                    f"reflect={reflect_duration:.1f}ms | skill_mgr={skill_mgr_duration:.1f}ms | "
+                    f"total={total_duration:.1f}ms | task_success={task.success}"
+                )
+
+            except Exception as e:
+                learn_duration = (time.time() - learn_start) * 1000
+                self._record_event(
+                    LEARNING_EVENTS['ERROR'],
+                    learn_duration,
+                    success=False,
+                    error=str(e),
+                    details={
+                        'phase': 'process_learning_task',
+                        'task_success': task.success,
+                        'skills_before': skills_before,
+                        'iteration': task.iteration,
+                    }
+                )
+                logger.warning(f"ACE learning error (non-fatal): {e}")
+
+    def _build_rich_execution_trace(self, task: LearningTask) -> str:
+        """Build a rich execution trace for the Reflector.
+
+        Creates a structured trace that includes all relevant context
+        for the Reflector to analyze and extract skills from.
+
+        Args:
+            task: The learning task containing execution data
+
+        Returns:
+            Formatted execution trace string
+        """
+        trace_parts = []
+
+        # Task context
+        trace_parts.append(f"## Task\n{task.task[:1000]}")
+
+        # Execution metadata
+        trace_parts.append(f"\n## Execution Metadata")
+        trace_parts.append(f"- Iteration: {task.iteration}")
+        trace_parts.append(f"- Success: {task.success}")
+        trace_parts.append(f"- Timestamp: {task.created_at}")
+
+        # Error information if present
+        if task.error:
+            trace_parts.append(f"\n## Error\n{task.error[:500]}")
+
+        # Original execution trace if provided
+        if task.execution_trace:
+            trace_parts.append(f"\n## Execution Details\n{task.execution_trace[:1000]}")
+
+        # Output summary
+        if task.output:
+            output_preview = task.output[:1000] if len(task.output) > 1000 else task.output
+            trace_parts.append(f"\n## Output Summary\n{output_preview}")
+
+        return "\n".join(trace_parts)
+
+    def _apply_skill_update_with_deduplication(self, update) -> None:
+        """Apply skill update with deduplication check.
+
+        Before adding new skills, checks for similar existing skills
+        to prevent duplication. Uses simple content matching for now,
+        with option to extend to embedding-based similarity.
+
+        Args:
+            update: The skill update from SkillManager
+        """
+        if not self.config.deduplication_enabled:
+            self.skillbook.apply_update(update)
+            return
+
+        # Get the update type and new skills
+        update_type = getattr(update, 'type', None)
+
+        # Only deduplicate for add operations
+        if update_type not in ('add', 'ADD', None):
+            self.skillbook.apply_update(update)
+            return
+
+        # Get existing skill contents for deduplication
+        existing_contents = set()
+        for skill in self.skillbook.skills():
+            content = getattr(skill, 'content', '').strip().lower()
+            if content:
+                existing_contents.add(content)
+
+        # Check if new skill is duplicate (simple content matching)
+        new_content = getattr(update, 'content', '')
+        if new_content:
+            new_content_normalized = new_content.strip().lower()
+
+            # Check for exact or very similar match
+            is_duplicate = False
+            for existing in existing_contents:
+                # Exact match
+                if new_content_normalized == existing:
+                    is_duplicate = True
+                    break
+                # High overlap (>85% of words match)
+                new_words = set(new_content_normalized.split())
+                existing_words = set(existing.split())
+                if new_words and existing_words:
+                    overlap = len(new_words & existing_words) / max(len(new_words), len(existing_words))
+                    if overlap >= self.config.similarity_threshold:
+                        is_duplicate = True
+                        break
+
+            if is_duplicate:
+                self._stats['skills_deduplicated'] += 1
+                logger.debug(f"Skipped duplicate skill: {new_content[:50]}...")
+                return
+
+        # Not a duplicate, apply the update
+        self.skillbook.apply_update(update)
+
+    def _atexit_handler(self) -> None:
+        """Atexit handler to ensure skillbook is saved on process exit.
+
+        This handler is registered via atexit.register() to ensure the
+        skillbook is persisted even if the process exits unexpectedly.
+        """
+        try:
+            self.shutdown()
+        except Exception as e:
+            # Don't let exceptions escape during process exit
+            logger.debug(f"Error in atexit handler: {e}")
+
+    def shutdown(self) -> None:
+        """Gracefully shutdown the learning adapter.
+
+        Stops the async worker, waits for pending tasks to complete,
+        and saves the skillbook to disk. Should be called before
+        process exit for clean shutdown.
+        """
+        if not self.enabled:
+            return
+
+        logger.debug("Shutting down ACE learning adapter...")
+
+        # Signal worker to stop
+        self._shutdown_event.set()
+
+        # Wait for worker thread to finish with timeout
+        if self._worker_thread and self._worker_thread.is_alive():
+            self._worker_thread.join(timeout=self.config.worker_timeout)
+            if self._worker_thread.is_alive():
+                logger.warning("ACE learning worker did not stop cleanly")
+
+        # Save skillbook before exit
+        self.save_skillbook()
+
+        logger.info("ACE learning adapter shutdown complete")
 
     @property
     def enabled(self) -> bool:
@@ -378,12 +779,14 @@ class ACELearningAdapter:
         output: str,
         success: bool,
         error: Optional[str] = None,
-        execution_trace: str = ""
+        execution_trace: str = "",
+        iteration: int = 0
     ) -> None:
         """Learn from iteration execution.
 
+        Non-blocking: If async_learning is enabled, queues the learning task
+        for background processing. Otherwise processes synchronously.
         Thread-safe: Uses lock to prevent race conditions.
-        Non-blocking: Errors are logged but don't crash the orchestrator.
 
         Args:
             task: The prompt/task that was executed
@@ -391,125 +794,87 @@ class ACELearningAdapter:
             success: Whether iteration succeeded
             error: Error message if failed
             execution_trace: Optional execution trace for analysis
+            iteration: The iteration number (for telemetry)
         """
         if not self.enabled:
             return
 
-        learn_start = time.time()
-        skills_before = 0
+        # Create learning task
+        learning_task = LearningTask(
+            task=task,
+            output=output,
+            success=success,
+            error=error,
+            execution_trace=execution_trace,
+            iteration=iteration,
+        )
 
-        with self._skillbook_lock:
+        # If async learning is enabled and worker is running, queue the task
+        if self.config.async_learning and self._worker_running:
             try:
-                skills_before = len(list(self.skillbook.skills()))
-
-                # Create AgentOutput for Reflector interface
-                agent_output = AgentOutput(
-                    reasoning=execution_trace or f"Task: {task[:500]}",
-                    final_answer=output[:2000] if output else "",
-                    skill_ids=[],  # External adapter, no pre-selected skills
-                    raw={
-                        "success": success,
-                        "has_error": error is not None
-                    }
+                self._learning_queue.put_nowait(learning_task)
+                self._stats['async_tasks_queued'] += 1
+                logger.debug(
+                    f"Queued learning task | iteration={iteration} | "
+                    f"queue_size={self._learning_queue.qsize()}"
                 )
+            except queue.Full:
+                logger.warning("Learning queue full, processing synchronously")
+                self._process_learning_task(learning_task)
+        else:
+            # Process synchronously (blocking)
+            self._process_learning_task(learning_task)
 
-                # Build feedback string
-                status = "succeeded" if success else "failed"
-                feedback = f"Iteration {status}"
-                if error:
-                    feedback += f"\nError: {error[:500]}"
+    def learn_from_rollback(
+        self,
+        failed_iterations: int,
+        rollback_target: str,
+        reason: str = ""
+    ) -> None:
+        """Learn from a checkpoint rollback event.
 
-                # Run Reflector with timing
-                reflect_start = time.time()
-                reflection = self.reflector.reflect(
-                    question=task[:1000],
-                    agent_output=agent_output,
-                    skillbook=self.skillbook,
-                    ground_truth=None,
-                    feedback=feedback
-                )
-                reflect_duration = (time.time() - reflect_start) * 1000
+        Records the rollback as a learning opportunity to avoid
+        repeating patterns that lead to failure.
 
-                # Record reflection event
-                self._stats['reflections_count'] += 1
-                self._record_event(
-                    LEARNING_EVENTS['REFLECT'],
-                    reflect_duration,
-                    success=True,
-                    details={
-                        'task_success': success,
-                        'task_len': len(task),
-                        'output_len': len(output) if output else 0,
-                        'has_execution_trace': bool(execution_trace),
-                        'reflection_summary': str(reflection)[:200] if reflection else None,
-                    }
-                )
+        Args:
+            failed_iterations: Number of failed iterations before rollback
+            rollback_target: The target commit/checkpoint rolled back to
+            reason: Why the rollback occurred
+        """
+        if not self.enabled:
+            return
 
-                # Run SkillManager with timing
-                skill_mgr_start = time.time()
-                skill_manager_output = self.skill_manager.update_skills(
-                    reflection=reflection,
-                    skillbook=self.skillbook,
-                    question_context=f"task: {task[:500]}",
-                    progress=f"Iteration: {task[:200]}"
-                )
-                skill_mgr_duration = (time.time() - skill_mgr_start) * 1000
+        self._stats['rollback_learnings'] += 1
 
-                # Update skillbook
-                self.skillbook.apply_update(skill_manager_output.update)
+        # Create a special learning task for rollback analysis
+        rollback_context = f"""
+## Rollback Event
+A rollback was triggered after {failed_iterations} failed iterations.
+Target: {rollback_target}
+Reason: {reason}
 
-                # Calculate skill changes
-                skills_after = len(list(self.skillbook.skills()))
-                skills_delta = skills_after - skills_before
+## Analysis
+This indicates a pattern that led to repeated failures. The agent should:
+1. Identify what went wrong in the failed iterations
+2. Avoid similar approaches in future attempts
+3. Consider alternative strategies
+"""
 
-                # Record skill update event
-                if skills_delta > 0:
-                    self._stats['skills_added'] += skills_delta
-                elif skills_delta < 0:
-                    self._stats['skills_pruned'] += abs(skills_delta)
-                else:
-                    self._stats['skills_updated'] += 1  # Assume update if no net change
+        learning_task = LearningTask(
+            task="Analyze rollback event and extract failure patterns",
+            output=rollback_context,
+            success=False,
+            error=reason,
+            execution_trace=f"Rollback after {failed_iterations} failures to {rollback_target}",
+            iteration=-1,  # Special marker for rollback learning
+        )
 
-                self._record_event(
-                    LEARNING_EVENTS['SKILL_UPDATE'],
-                    skill_mgr_duration,
-                    success=True,
-                    details={
-                        'skills_before': skills_before,
-                        'skills_after': skills_after,
-                        'skills_delta': skills_delta,
-                        'update_type': getattr(skill_manager_output.update, 'type', 'unknown'),
-                    }
-                )
-
-                # Enforce max_skills limit
-                self._prune_skills_if_needed()
-
-                # Calculate total learning time
-                total_duration = (time.time() - learn_start) * 1000
-                self._stats['total_learning_time_ms'] += total_duration
-
-                # Log comprehensive learning summary
-                logger.info(
-                    f"ACE learning complete | skills={skills_after} (Δ{skills_delta:+d}) | "
-                    f"reflect={reflect_duration:.1f}ms | skill_mgr={skill_mgr_duration:.1f}ms | "
-                    f"total={total_duration:.1f}ms | task_success={success}"
-                )
-
-            except Exception as e:
-                learn_duration = (time.time() - learn_start) * 1000
-                self._record_event(
-                    LEARNING_EVENTS['ERROR'],
-                    learn_duration,
-                    success=False,
-                    error=str(e),
-                    details={
-                        'phase': 'learn_from_execution',
-                        'task_success': success,
-                        'skills_before': skills_before,
-                    }
-                )
-                logger.warning(f"ACE learning error (non-fatal): {e}")
+        # Always process rollback learning synchronously (important insight)
+        self._process_learning_task(learning_task)
+        logger.info(
+            f"Learned from rollback | failed_iterations={failed_iterations} | "
+            f"target={rollback_target}"
+        )
 
     def _prune_skills_if_needed(self) -> None:
         """Prune lowest-scoring skills if over max_skills limit.
@@ -632,16 +997,23 @@ class ACELearningAdapter:
                     "skill_count": len(skills),
                     "max_skills": self.config.max_skills,
                     "async_learning": self.config.async_learning,
+                    # Async worker status
+                    "async_worker_running": self._worker_running,
+                    "async_queue_size": self._learning_queue.qsize(),
                     # Telemetry stats
                     "telemetry": {
                         "reflections_count": self._stats['reflections_count'],
                         "skills_added": self._stats['skills_added'],
                         "skills_updated": self._stats['skills_updated'],
                         "skills_pruned": self._stats['skills_pruned'],
+                        "skills_deduplicated": self._stats['skills_deduplicated'],
                         "inject_count": self._stats['inject_count'],
                         "errors_count": self._stats['errors_count'],
                         "total_learning_time_ms": self._stats['total_learning_time_ms'],
                         "events_recorded": len(self._events),
+                        "async_tasks_queued": self._stats['async_tasks_queued'],
+                        "async_tasks_processed": self._stats['async_tasks_processed'],
+                        "rollback_learnings": self._stats['rollback_learnings'],
                     },
                     "top_skills": [
                         {
@@ -718,4 +1090,11 @@ class ACELearningAdapter:
 
 
 # Export ACE_AVAILABLE for external checks
-__all__ = ["ACELearningAdapter", "LearningConfig", "ACE_AVAILABLE", "LearningEvent", "LEARNING_EVENTS"]
+__all__ = [
+    "ACELearningAdapter",
+    "LearningConfig",
+    "LearningTask",
+    "LearningEvent",
+    "LEARNING_EVENTS",
+    "ACE_AVAILABLE",
+]

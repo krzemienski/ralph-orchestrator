@@ -24,6 +24,7 @@ from .metrics import Metrics, CostTracker, IterationStats, TriggerReason
 from .safety import SafetyGuard
 from .context import ContextManager
 from .output import RalphConsole
+from .logging import StreamLogger, LogLevel
 
 # Setup logging
 logging.basicConfig(
@@ -125,6 +126,9 @@ class RalphOrchestrator:
         self.safety_guard = SafetyGuard(max_iterations, max_runtime, max_cost)
         self.context_manager = ContextManager(self.prompt_file, prompt_text=self.prompt_text)
         self.console = RalphConsole()  # Enhanced console output
+
+        # Initialize stream logger (Component 2: Full Log Streaming)
+        self.stream_logger = self._initialize_stream_logger()
 
         # Initialize ACE learning adapter (optional feature)
         self.learning_adapter = self._initialize_learning_adapter()
@@ -290,6 +294,56 @@ class RalphOrchestrator:
         cfg = self._config.get_adapter_config(name)
         return getattr(cfg, "enabled", True)
 
+    def _initialize_stream_logger(self) -> StreamLogger | None:
+        """Initialize stream logger if configured.
+
+        Returns:
+            StreamLogger instance if stream logging is enabled,
+            None otherwise.
+        """
+        # Check if we have a config object with stream logging settings
+        if not self._config:
+            return None
+
+        # Extract stream logging settings from config
+        stream_logs_enabled = getattr(self._config, 'stream_logs_enabled', False)
+        if not stream_logs_enabled:
+            logger.debug("Stream logging disabled in configuration")
+            return None
+
+        # Map log level string to LogLevel enum
+        log_level_str = getattr(self._config, 'stream_log_level', 'INFO').upper()
+        level_map = {
+            'DEBUG': LogLevel.DEBUG,
+            'INFO': LogLevel.INFO,
+            'WARNING': LogLevel.WARNING,
+            'WARN': LogLevel.WARNING,
+            'ERROR': LogLevel.ERROR,
+        }
+        log_level = level_map.get(log_level_str, LogLevel.INFO)
+
+        # Check FIFO preference
+        enable_fifo = getattr(self._config, 'stream_fifo_enabled', True)
+
+        # Create stream logger
+        stream_logger = StreamLogger(
+            log_level=log_level,
+            enable_console=True,
+            enable_file=True,
+            enable_fifo=enable_fifo,
+        )
+
+        logger.info(f"Stream logging initialized (level: {log_level_str}, fifo: {enable_fifo})")
+        if self.verbose:
+            self.console.print_info(
+                f"Stream logging enabled (level: {log_level_str}, "
+                f"log file: {stream_logger.log_file_path})"
+            )
+            if stream_logger.fifo_path:
+                self.console.print_info(f"FIFO pipe: {stream_logger.fifo_path}")
+
+        return stream_logger
+
     def _initialize_learning_adapter(self) -> ACELearningAdapter | None:
         """Initialize ACE learning adapter if configured.
 
@@ -432,13 +486,13 @@ class RalphOrchestrator:
         after the signal handler has done its synchronous cleanup.
         """
         try:
-            # Save ACE skillbook before shutdown
+            # Gracefully shutdown ACE learning adapter (saves skillbook)
             if self.learning_adapter:
                 try:
-                    self.learning_adapter.save_skillbook()
-                    logger.debug("Saved ACE skillbook during emergency cleanup")
+                    self.learning_adapter.shutdown()
+                    logger.debug("ACE learning adapter shutdown during emergency cleanup")
                 except Exception as e:
-                    logger.debug(f"Failed to save skillbook during emergency cleanup: {e}")
+                    logger.debug(f"Failed to shutdown learning adapter during emergency cleanup: {e}")
 
             # Clean up adapter transport if available
             if hasattr(self.current_adapter, '_cleanup_transport'):
@@ -506,6 +560,10 @@ class RalphOrchestrator:
         """Run the main orchestration loop asynchronously."""
         logger.info("Starting Ralph orchestration loop")
 
+        # Stream log: orchestration start
+        if self.stream_logger:
+            self.stream_logger.info("orchestrator", "Starting Ralph orchestration loop")
+
         # Set up async signal handlers now that we have a running loop
         self._setup_async_signal_handlers()
 
@@ -513,6 +571,10 @@ class RalphOrchestrator:
         logger.debug("Using agent: %s", agent_details)
         if self.verbose:
             self.console.print_info(f"Using agent: {agent_details}")
+
+        # Stream log: agent details
+        if self.stream_logger:
+            self.stream_logger.info("orchestrator", f"Using agent: {agent_details}")
 
         start_time = time.time()
         self._start_time = start_time  # Store for state retrieval
@@ -527,11 +589,15 @@ class RalphOrchestrator:
             
             if not safety_check.passed:
                 logger.info(f"Safety limit reached: {safety_check.reason}")
+                if self.stream_logger:
+                    self.stream_logger.warning("orchestrator", f"Safety limit reached: {safety_check.reason}", iteration=self.metrics.iterations)
                 break
 
             # Check for explicit completion marker in prompt
             if self._check_completion_marker():
                 logger.info("Completion marker found - task marked complete")
+                if self.stream_logger:
+                    self.stream_logger.info("orchestrator", "Task completion marker detected - stopping orchestration", iteration=self.metrics.iterations)
                 self.console.print_success("Task completion marker detected - stopping orchestration")
                 break
             
@@ -542,6 +608,8 @@ class RalphOrchestrator:
             self.metrics.iterations += 1
             self.console.print_iteration_header(self.metrics.iterations)
             logger.info(f"Starting iteration {self.metrics.iterations}")
+            if self.stream_logger:
+                self.stream_logger.info("orchestrator", f"Starting iteration {self.metrics.iterations}", iteration=self.metrics.iterations)
 
             # Record iteration timing
             iteration_start = time.time()
@@ -558,6 +626,9 @@ class RalphOrchestrator:
                     self.console.print_success(
                         f"Iteration {self.metrics.iterations} completed successfully"
                     )
+                    # Stream log: iteration success
+                    if self.stream_logger:
+                        self.stream_logger.info("orchestrator", f"Iteration {self.metrics.iterations} completed successfully", iteration=self.metrics.iterations)
                     # Show agent output for this iteration
                     if self.last_response_output:
                         self.console.print_header(f"Agent Output (Iteration {self.metrics.iterations})")
@@ -570,12 +641,18 @@ class RalphOrchestrator:
                                 "Loop detected - agent producing repetitive outputs"
                             )
                             logger.warning("Breaking loop due to repetitive agent outputs")
+                            # Stream log: loop detection
+                            if self.stream_logger:
+                                self.stream_logger.warning("orchestrator", "Loop detected - agent producing repetitive outputs", iteration=self.metrics.iterations)
                 else:
                     self.metrics.failed_iterations += 1
                     iteration_error = "Iteration failed"
                     self.console.print_warning(
                         f"Iteration {self.metrics.iterations} failed"
                     )
+                    # Stream log: iteration failure
+                    if self.stream_logger:
+                        self.stream_logger.warning("orchestrator", f"Iteration {self.metrics.iterations} failed", iteration=self.metrics.iterations)
                     await self._handle_failure()
 
                 # Checkpoint if needed
@@ -584,12 +661,18 @@ class RalphOrchestrator:
                     self.console.print_info(
                         f"Checkpoint {self.metrics.checkpoints} created"
                     )
+                    # Stream log: checkpoint
+                    if self.stream_logger:
+                        self.stream_logger.debug("orchestrator", f"Checkpoint {self.metrics.checkpoints} created", iteration=self.metrics.iterations)
 
             except Exception as e:
                 logger.warning(f"Error in iteration: {e}")
                 self.metrics.errors += 1
                 iteration_error = str(e)
                 self.console.print_error(f"Error in iteration: {e}")
+                # Stream log: error
+                if self.stream_logger:
+                    self.stream_logger.error("orchestrator", f"Error in iteration: {e}", iteration=self.metrics.iterations, error=str(e))
                 self._handle_error(e)
 
             # Record per-iteration telemetry
@@ -627,6 +710,13 @@ class RalphOrchestrator:
             if iteration_success and self._check_completion_promise(self.last_response_output):
                 logger.info("Completion promise matched - task marked complete")
                 self.console.print_success("Completion promise matched - stopping orchestration")
+                # Stream log: completion promise matched
+                if self.stream_logger:
+                    self.stream_logger.info(
+                        "orchestrator",
+                        f"Completion promise '{self.config.completion_promise}' matched - task complete",
+                        iteration=self.metrics.iterations
+                    )
                 break
 
             # Break loop if detected (after recording telemetry)
@@ -635,7 +725,17 @@ class RalphOrchestrator:
             
             # Brief pause between iterations
             await asyncio.sleep(2)
-        
+
+        # Stream log: orchestration complete
+        if self.stream_logger:
+            self.stream_logger.info(
+                "orchestrator",
+                f"Orchestration complete: {self.metrics.iterations} iterations, {self.metrics.successful_iterations} successful",
+                iteration=self.metrics.iterations,
+                total_tokens=self.metrics.total_tokens,
+                total_cost=self.metrics.total_cost
+            )
+
         # Final summary
         self._print_summary()
     
@@ -730,16 +830,27 @@ class RalphOrchestrator:
             task_context = self.current_task.get('description', 'iteration task') if isinstance(self.current_task, dict) else str(self.current_task or 'iteration task')
             output_text = response.output if response.output else ""
 
+            # Build rich execution trace for Reflector analysis
+            execution_trace = self._build_execution_trace(
+                prompt=prompt[:500] if prompt else "",
+                adapter_name=self.current_adapter.name,
+                response_success=response.success,
+                response_error=response.error,
+                tokens_used=response.tokens_used,
+            )
+
             # Capture learning stats before
             stats_before = self.learning_adapter.get_stats()
             skills_before = stats_before.get('skill_count', 0)
 
-            # Execute learning
+            # Execute learning (non-blocking if async is enabled)
             self.learning_adapter.learn_from_execution(
                 task=task_context,
                 output=output_text,
                 success=response.success,
-                execution_trace=f"iteration={self.metrics.iterations}, adapter={self.current_adapter.name}"
+                error=response.error,
+                execution_trace=execution_trace,
+                iteration=self.metrics.iterations,
             )
 
             # Capture learning stats after and log delta
@@ -754,11 +865,20 @@ class RalphOrchestrator:
                 for e in recent_events
             ]) if recent_events else "none"
 
-            logger.info(
-                f"ACE learning complete | iteration={self.metrics.iterations} | "
-                f"success={response.success} | skills={skills_after} (Δ{skills_delta:+d}) | "
-                f"events=[{learning_event_summary}]"
-            )
+            # Log appropriate message based on async mode
+            async_mode = stats_after.get('async_learning', False)
+            queue_size = stats_after.get('async_queue_size', 0)
+            if async_mode:
+                logger.info(
+                    f"ACE learning queued | iteration={self.metrics.iterations} | "
+                    f"queue_size={queue_size} | skills={skills_after}"
+                )
+            else:
+                logger.info(
+                    f"ACE learning complete | iteration={self.metrics.iterations} | "
+                    f"success={response.success} | skills={skills_after} (Δ{skills_delta:+d}) | "
+                    f"events=[{learning_event_summary}]"
+                )
 
         return response.success
     
@@ -831,7 +951,11 @@ class RalphOrchestrator:
             logger.warning(f"Failed to create checkpoint: {e}")
     
     async def _rollback_checkpoint(self):
-        """Rollback to previous checkpoint asynchronously."""
+        """Rollback to previous checkpoint asynchronously.
+
+        Also triggers learning from the rollback event to help the agent
+        avoid repeating patterns that led to failure.
+        """
         try:
             proc = await asyncio.create_subprocess_exec(
                 "git", "reset", "--hard", "HEAD~1",
@@ -845,6 +969,14 @@ class RalphOrchestrator:
 
             logger.debug("Rolled back to previous checkpoint")
             self.metrics.rollbacks += 1
+
+            # Trigger ACE learning from rollback event
+            if self.learning_adapter:
+                self.learning_adapter.learn_from_rollback(
+                    failed_iterations=self.metrics.failed_iterations,
+                    rollback_target="HEAD~1",
+                    reason=f"Multiple failures ({self.metrics.failed_iterations}) triggered rollback",
+                )
         except Exception as e:
             logger.error(f"Failed to rollback: {e}")
     
@@ -904,13 +1036,25 @@ class RalphOrchestrator:
             for tool, cost in self.cost_tracker.costs_by_tool.items():
                 self.console.print_info(f"  {tool}: ${cost:.4f}")
 
-        # Display ACE learning stats if enabled
+        # Display ACE learning stats if enabled and gracefully shutdown
         if self.learning_adapter:
             learning_stats = self.learning_adapter.get_stats()
+            telemetry = learning_stats.get('telemetry', {})
             self.console.print_info("ACE Learning:")
-            self.console.print_info(f"  Skills learned: {learning_stats.get('skills_count', 0)}")
-            self.console.print_info(f"  Reflections: {learning_stats.get('reflections_count', 0)}")
+            self.console.print_info(f"  Skills in skillbook: {learning_stats.get('skill_count', 0)}")
+            self.console.print_info(f"  Skills added: {telemetry.get('skills_added', 0)}")
+            self.console.print_info(f"  Skills deduplicated: {telemetry.get('skills_deduplicated', 0)}")
+            self.console.print_info(f"  Reflections: {telemetry.get('reflections_count', 0)}")
+            self.console.print_info(f"  Rollback learnings: {telemetry.get('rollback_learnings', 0)}")
+            self.console.print_info(f"  Learning time: {telemetry.get('total_learning_time_ms', 0):.1f}ms")
             self.console.print_info(f"  Skillbook: {learning_stats.get('skillbook_path', 'N/A')}")
+
+            # Gracefully shutdown the learning adapter (saves skillbook)
+            try:
+                self.learning_adapter.shutdown()
+                self.console.print_success("ACE skillbook saved")
+            except Exception as e:
+                logger.warning(f"Failed to shutdown learning adapter: {e}")
 
         # Save metrics to file with enhanced per-iteration telemetry
         metrics_dir = Path(".agent") / "metrics"
@@ -1002,6 +1146,67 @@ class RalphOrchestrator:
                 self.completed_tasks.append(self.current_task)
                 self.current_task = None
                 self.task_start_time = None
+
+    def _build_execution_trace(
+        self,
+        prompt: str,
+        adapter_name: str,
+        response_success: bool,
+        response_error: str = None,
+        tokens_used: int = None,
+    ) -> str:
+        """Build a rich execution trace for ACE Reflector analysis.
+
+        Creates a structured trace that includes all relevant context
+        for the Reflector to analyze and extract skills from.
+
+        Args:
+            prompt: The prompt that was executed (truncated)
+            adapter_name: Name of the adapter used
+            response_success: Whether the response was successful
+            response_error: Error message if failed
+            tokens_used: Tokens consumed in this iteration
+
+        Returns:
+            Formatted execution trace string for Reflector
+        """
+        trace_parts = []
+
+        # Iteration context
+        trace_parts.append("## Iteration Context")
+        trace_parts.append(f"- Iteration: {self.metrics.iterations}")
+        trace_parts.append(f"- Adapter: {adapter_name}")
+        trace_parts.append(f"- Success: {response_success}")
+        trace_parts.append(f"- Timestamp: {datetime.now().isoformat()}")
+
+        # Metrics context
+        trace_parts.append("\n## Orchestration Metrics")
+        trace_parts.append(f"- Total iterations: {self.metrics.iterations}")
+        trace_parts.append(f"- Successful: {self.metrics.successful_iterations}")
+        trace_parts.append(f"- Failed: {self.metrics.failed_iterations}")
+        trace_parts.append(f"- Checkpoints: {self.metrics.checkpoints}")
+        trace_parts.append(f"- Rollbacks: {self.metrics.rollbacks}")
+
+        # Cost tracking if available
+        if self.cost_tracker:
+            trace_parts.append(f"- Total cost: ${self.cost_tracker.total_cost:.4f}")
+            if tokens_used:
+                trace_parts.append(f"- Tokens this iteration: {tokens_used}")
+
+        # Task context
+        if self.current_task:
+            task_desc = self.current_task.get('description', 'Unknown task')
+            trace_parts.append(f"\n## Current Task\n{task_desc[:500]}")
+
+        # Prompt preview
+        if prompt:
+            trace_parts.append(f"\n## Prompt Preview\n{prompt[:500]}")
+
+        # Error information
+        if response_error:
+            trace_parts.append(f"\n## Error\n{response_error[:500]}")
+
+        return "\n".join(trace_parts)
 
     def _check_completion_marker(self) -> bool:
         """Check if prompt contains TASK_COMPLETE marker (checkbox style).

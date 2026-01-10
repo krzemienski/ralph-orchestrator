@@ -1,0 +1,17 @@
+There's a file with broken imports at `tests/test_broken_imports.py`. Create this file with intentionally broken imports, then fix them.
+
+First, create the broken file with these issues:
+1. Import from wrong module path (e.g., `from ralph_orchestrator.adaptor import ClaudeAdapter` - misspelled)
+2. Import a non-existent class (e.g., `from ralph_orchestrator.orchestrator import RalphRunner` - doesn't exist)
+3. Circular import pattern (import something that would import this file)
+4. Missing __init__.py in a new test subdirectory
+
+Then fix all the import errors so the file can be imported successfully.
+
+The fixed file should:
+- Import ClaudeAdapter correctly from ralph_orchestrator.adapters.claude
+- Import RalphOrchestrator from ralph_orchestrator.orchestrator
+- Avoid circular imports
+- Have proper directory structure
+
+Verify the fix works by adding a simple test function that uses the imports.

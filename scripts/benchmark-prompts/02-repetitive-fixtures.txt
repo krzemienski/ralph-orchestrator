@@ -1,0 +1,14 @@
+Create pytest fixtures in `tests/conftest.py` for the following test scenarios. Add these fixtures to the existing file if it exists, or create a new one:
+
+1. `mock_config` - Returns a mock RalphConfig object with test values
+2. `temp_directory` - Creates and yields a temporary directory, cleans up after test
+3. `mock_subprocess` - Mocks subprocess.run to return a successful result
+4. `sample_prompt` - Returns a sample prompt string for testing
+
+Requirements:
+- Use pytest's `@pytest.fixture` decorator
+- Use `pytest.fixture(scope="function")` for function-scoped fixtures
+- Use `pytest.fixture(scope="session")` for `temp_directory`
+- Include docstrings for each fixture explaining its purpose
+- Use `unittest.mock.MagicMock` or `unittest.mock.patch` where appropriate
+- Import necessary modules at the top of the file

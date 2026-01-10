@@ -39,15 +39,17 @@ Reference:
 from .ace_adapter import (
     ACELearningAdapter,
     LearningConfig,
-    ACE_AVAILABLE,
+    LearningTask,
     LearningEvent,
     LEARNING_EVENTS,
+    ACE_AVAILABLE,
 )
 
 __all__ = [
     "ACELearningAdapter",
     "LearningConfig",
-    "ACE_AVAILABLE",
+    "LearningTask",
     "LearningEvent",
     "LEARNING_EVENTS",
+    "ACE_AVAILABLE",
 ]
