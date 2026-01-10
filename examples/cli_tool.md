@@ -59,3 +59,22 @@ The orchestrator will continue iterations until all components are implemented a
 - [x] Wrote TDD tests (9 passing tests)
 
 **Next iteration:** Implement utils/config.py
+
+### Iteration 2 - COMPLETE
+**Task:** Implement configuration management module
+
+**Completed:**
+- [x] Implemented `utils/config.py` with:
+  - `Config` class for YAML configuration management
+  - `ConfigError` exception for error handling
+  - Default configuration values (dry_run, create_backup, log_level)
+  - Support for loading from `~/.file_organizer.yml`
+  - Photo organization settings (source_dir, target_dir, date_format)
+  - Document organization settings (extensions list)
+  - Custom rules configuration support
+  - Save functionality to persist config changes
+  - Path expansion for ~ home directory
+- [x] Wrote TDD tests (11 passing tests)
+- [x] Total tests: 20 passing
+
+**Next iteration:** Implement utils/backup.py
