@@ -78,3 +78,23 @@ The orchestrator will continue iterations until all components are implemented a
 - [x] Total tests: 20 passing
 
 **Next iteration:** Implement utils/backup.py
+
+### Iteration 3 - COMPLETE
+**Task:** Implement backup management module
+
+**Completed:**
+- [x] Implemented `utils/backup.py` with:
+  - `BackupManager` class for file backup operations
+  - `BackupError` exception for error handling
+  - Timestamped session directories (YYYY-MM-DD_HHMMSS format)
+  - Preserves directory structure relative to source base
+  - Preserves file permissions using os.stat/chmod
+  - Manifest tracking of all backed up files
+  - `backup_file()` - Create backup copy of a file
+  - `restore_file()` - Restore file from backup
+  - `get_manifest()` - Get list of backed up files
+  - Default backup directory: `~/.file_organizer_backups`
+- [x] Wrote TDD tests (13 passing tests)
+- [x] Total tests: 33 passing (9 base + 11 config + 13 backup)
+
+**Next iteration:** Implement organizers/document_organizer.py
