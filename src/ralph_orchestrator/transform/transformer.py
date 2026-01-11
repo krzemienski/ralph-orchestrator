@@ -8,8 +8,13 @@ Transforms user prompts into RALF-optimized format by:
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from .analyzers import CompletionAnalyzer
-from .enrichers import CompletionEnricher, PathResolutionEnricher
+from .analyzers import CompletionAnalyzer, CheckboxAnalyzer, SectionAnalyzer
+from .enrichers import (
+    CompletionEnricher,
+    PathResolutionEnricher,
+    CheckboxEnricher,
+    SuccessCriteriaEnricher,
+)
 
 
 @dataclass
@@ -57,6 +62,8 @@ class PromptTransformer:
         # Initialize analyzers
         self.analyzers = [
             CompletionAnalyzer(),
+            CheckboxAnalyzer(),
+            SectionAnalyzer(),
         ]
 
         # Initialize enrichers conditionally based on config (ordered by priority)
@@ -65,6 +72,10 @@ class PromptTransformer:
             self.enrichers.append(CompletionEnricher())      # HIGH priority
         if self.config.add_path_resolution:
             self.enrichers.append(PathResolutionEnricher())  # HIGH priority
+        if self.config.convert_to_checkboxes:
+            self.enrichers.append(CheckboxEnricher())        # MEDIUM priority
+        if self.config.add_success_criteria:
+            self.enrichers.append(SuccessCriteriaEnricher()) # MEDIUM priority
 
     def transform(
         self,
@@ -136,4 +147,10 @@ class PromptTransformer:
                 changes.append("Added completion marker")
             if "Working Directory:" in transformed and "Working Directory:" not in original:
                 changes.append("Added path resolution header")
+            # Check for checkbox conversion (numbered list to checkboxes)
+            if "- [ ]" in transformed and "- [ ]" not in original:
+                changes.append("Converted numbered lists to checkboxes")
+            # Check for success criteria addition
+            if "## Success Criteria" in transformed and "## Success Criteria" not in original:
+                changes.append("Added success criteria section")
         return changes
