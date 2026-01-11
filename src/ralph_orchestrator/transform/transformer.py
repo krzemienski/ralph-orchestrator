@@ -59,11 +59,12 @@ class PromptTransformer:
             CompletionAnalyzer(),
         ]
 
-        # Initialize enrichers (ordered by priority)
-        self.enrichers = [
-            CompletionEnricher(),      # HIGH priority
-            PathResolutionEnricher(),  # HIGH priority
-        ]
+        # Initialize enrichers conditionally based on config (ordered by priority)
+        self.enrichers = []
+        if self.config.add_completion_marker:
+            self.enrichers.append(CompletionEnricher())      # HIGH priority
+        if self.config.add_path_resolution:
+            self.enrichers.append(PathResolutionEnricher())  # HIGH priority
 
     def transform(
         self,

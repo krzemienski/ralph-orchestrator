@@ -382,6 +382,88 @@ def run_diagnostics():
     _console.print_info("For more help, visit: https://github.com/mikeyobrien/ralph-orchestrator/issues")
 
 
+def handle_structure(args):
+    """Transform a prompt into RALF-optimized format.
+
+    Handles file input, literal text input, and various output options.
+    """
+    import json as json_module
+    from ralph_orchestrator.transform import PromptTransformer, TransformContext, TransformConfig
+
+    # Validate input: need either file or --text
+    if not args.file and not args.text:
+        print("Error: Must provide a file or use --text", file=sys.stderr)
+        sys.exit(1)
+
+    # Handle file input
+    if args.file:
+        file_path = Path(args.file)
+        if not file_path.exists():
+            print(f"Error: File not found: {args.file}", file=sys.stderr)
+            sys.exit(1)
+        content = file_path.read_text()
+        working_dir = str(file_path.parent.resolve())
+    else:
+        # --text input
+        content = args.text
+        working_dir = str(Path.cwd())
+
+    # Create transformer with config
+    # --minimal: only add critical elements (completion marker), skip path resolution etc.
+    # --no-completion: skip completion marker entirely
+    is_minimal = getattr(args, 'minimal', False)
+    config = TransformConfig(
+        add_completion_marker=not getattr(args, 'no_completion', False),
+        add_path_resolution=not is_minimal,
+        add_scratchpad_header=not is_minimal
+    )
+    transformer = PromptTransformer(config=config)
+
+    # Create context with working directory
+    context = TransformContext(working_directory=working_dir)
+
+    # Transform the prompt
+    result = transformer.transform(content, context=context)
+
+    # Handle output based on flags
+    if getattr(args, 'json', False):
+        # JSON output mode
+        output_data = {
+            "original": result.original,
+            "transformed": result.transformed,
+            "changes": result.changes,
+            "analysis": result.analysis,
+            "validation": result.validation
+        }
+        print(json_module.dumps(output_data, indent=2))
+    elif getattr(args, 'dry_run', False):
+        # Dry run: show preview without modifying
+        _console.print_info("=== Dry Run Preview ===")
+        if result.changes:
+            _console.print_info(f"Changes: Added {', '.join(result.changes)}")
+        else:
+            _console.print_info("Changes: None (prompt already complete)")
+        print("\n" + result.transformed)
+    elif args.output:
+        # Output to file or stdout
+        if args.output == '-':
+            # Output to stdout
+            print(result.transformed)
+        else:
+            # Output to different file
+            output_path = Path(args.output)
+            output_path.write_text(result.transformed)
+            _console.print_success(f"Transformed prompt written to: {args.output}")
+    else:
+        # Default: overwrite input file (only for file input)
+        if args.file:
+            file_path.write_text(result.transformed)
+            _console.print_success(f"Transformed: {args.file}")
+        else:
+            # --text with no output specified: print to stdout
+            print(result.transformed)
+
+
 def generate_prompt(rough_ideas: List[str], output_file: str = "PROMPT.md", interactive: bool = False, agent: str = "auto"):
     """Generate a structured prompt from rough ideas using AI agent."""
 
@@ -669,6 +751,44 @@ Examples:
     # Doctor command (diagnostic tool for issue #39)
     subparsers.add_parser('doctor', help='Run diagnostic checks for common issues')
     
+    # Structure command
+    structure_parser = subparsers.add_parser('structure', help='Transform prompt into RALF-optimized format')
+    structure_parser.add_argument(
+        'file',
+        nargs='?',
+        help='Prompt file to transform (or use --text for literal text)'
+    )
+    structure_parser.add_argument(
+        '--text',
+        metavar='TEXT',
+        help='Literal text to transform (instead of file)'
+    )
+    structure_parser.add_argument(
+        '-o', '--output',
+        metavar='FILE',
+        help='Output file (default: overwrite input, use - for stdout)'
+    )
+    structure_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Show transformed output without modifying files'
+    )
+    structure_parser.add_argument(
+        '--json',
+        action='store_true',
+        help='Output in JSON format (with analysis and changes)'
+    )
+    structure_parser.add_argument(
+        '--minimal',
+        action='store_true',
+        help='Only add critical elements (completion marker)'
+    )
+    structure_parser.add_argument(
+        '--no-completion',
+        action='store_true',
+        help='Skip adding completion marker'
+    )
+
     # Prompt command
     prompt_parser = subparsers.add_parser('prompt', help='Generate structured prompt from rough ideas')
     prompt_parser.add_argument(
@@ -977,7 +1097,11 @@ Examples:
     if command == 'doctor':
         run_diagnostics()
         sys.exit(0)
-    
+
+    if command == 'structure':
+        handle_structure(args)
+        sys.exit(0)
+
     if command == 'prompt':
         # Use interactive mode if no ideas provided or -i flag used
         interactive_mode = args.interactive or not args.ideas
