@@ -115,6 +115,107 @@ if not ACE_AVAILABLE:
     wrap_skillbook_context = None  # type: ignore
 
 
+# Import Claude SDK for ClaudeSDKClient
+CLAUDE_SDK_AVAILABLE = False
+try:
+    from claude_agent_sdk import ClaudeAgentOptions, query as claude_query
+    CLAUDE_SDK_AVAILABLE = True
+except ImportError:
+    try:
+        from claude_code_sdk import ClaudeCodeOptions as ClaudeAgentOptions, query as claude_query
+        CLAUDE_SDK_AVAILABLE = True
+    except ImportError:
+        pass
+
+
+class ClaudeSDKClient:
+    """LLM client that uses claude_agent_sdk instead of LiteLLM.
+
+    This adapter implements the ACE LLMClient interface but uses the Claude Agent SDK
+    under the hood. This allows ACE learning to work inside Claude Code where direct
+    API keys are not available (Claude Code uses proxy authentication).
+
+    The interface matches ACE's LLMClient:
+    - __init__(model, max_tokens, ...)
+    - complete(prompt, **kwargs) -> LLMResponse-like object
+    """
+
+    def __init__(self, model: str = "claude-sonnet-4-5-20250929", max_tokens: int = 2048, **kwargs):
+        """Initialize the Claude SDK client.
+
+        Args:
+            model: Model to use (passed to Claude Agent SDK)
+            max_tokens: Maximum tokens for response (not directly used by SDK, but kept for interface compatibility)
+            **kwargs: Additional arguments (ignored for compatibility)
+        """
+        self.model = model
+        self.max_tokens = max_tokens
+        self._available = CLAUDE_SDK_AVAILABLE
+
+        if not self._available:
+            logger.warning("Claude SDK not available for ACE learning")
+
+    def complete(self, prompt: str, **kwargs) -> 'LLMResponse':
+        """Complete a prompt using Claude SDK.
+
+        This is a synchronous wrapper around the async claude_agent_sdk.query().
+        ACE's Reflector and SkillManager expect synchronous complete() calls.
+
+        Args:
+            prompt: The prompt to complete
+            **kwargs: Additional arguments (passed to query options)
+
+        Returns:
+            LLMResponse-like object with text and raw attributes
+        """
+        import asyncio
+
+        if not self._available:
+            raise RuntimeError("Claude SDK not available")
+
+        # Run async query synchronously
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        async def _query():
+            output_chunks = []
+            options = ClaudeAgentOptions(
+                model=self.model,
+                permission_mode='bypassPermissions',
+                setting_sources=['user', 'project', 'local'],
+            )
+
+            async for message in claude_query(prompt=prompt, options=options):
+                msg_type = type(message).__name__
+
+                # Extract text from AssistantMessage
+                if msg_type == 'AssistantMessage':
+                    if hasattr(message, 'content') and message.content:
+                        for content_block in message.content:
+                            if hasattr(content_block, 'text'):
+                                output_chunks.append(content_block.text)
+
+                # Extract text from ResultMessage
+                elif msg_type == 'ResultMessage':
+                    if hasattr(message, 'result'):
+                        output_chunks.append(str(message.result))
+
+            return ''.join(output_chunks)
+
+        text = loop.run_until_complete(_query())
+
+        # Return object with same interface as LLMResponse
+        class LLMResponseLike:
+            def __init__(self, text_content: str):
+                self.text = text_content
+                self.raw = {'model': self.model if hasattr(self, 'model') else 'claude-sdk'}
+
+        return LLMResponseLike(text)
+
+
 @dataclass
 class LearningTask:
     """A learning task to be processed by the async worker.
@@ -276,46 +377,66 @@ class ACELearningAdapter:
             self.skillbook = Skillbook()
 
         # Initialize LLM client for ACE (separate from main adapter)
-        # CRITICAL: Explicitly read API key from environment at initialization time
-        # LiteLLM's auto-detection can fail in subprocess/thread contexts
+        # STRATEGY: Use ClaudeSDKClient when running inside Claude Code (proxy auth),
+        # fall back to LiteLLMClient with explicit API key for external execution
         try:
-            # Determine which API key to use based on model
-            api_key = None
-            api_key_env_var = None
+            is_claude_model = 'claude' in config.model.lower() or 'anthropic' in config.model.lower()
 
-            if 'claude' in config.model.lower() or 'anthropic' in config.model.lower():
-                api_key = os.environ.get('ANTHROPIC_API_KEY')
-                api_key_env_var = 'ANTHROPIC_API_KEY'
-            elif 'gpt' in config.model.lower() or 'openai' in config.model.lower():
-                api_key = os.environ.get('OPENAI_API_KEY')
-                api_key_env_var = 'OPENAI_API_KEY'
-            elif 'gemini' in config.model.lower() or 'google' in config.model.lower():
-                api_key = os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY')
-                api_key_env_var = 'GOOGLE_API_KEY or GEMINI_API_KEY'
+            # Prefer ClaudeSDKClient when:
+            # 1. Claude SDK is available (running inside Claude Code)
+            # 2. Model is a Claude model
+            if CLAUDE_SDK_AVAILABLE and is_claude_model:
+                logger.info(f"ACE learning using ClaudeSDKClient (proxy auth) with model: {config.model}")
+                self.llm = ClaudeSDKClient(
+                    model=config.model,
+                    max_tokens=config.max_tokens
+                )
             else:
-                # Try common API keys
-                api_key = (
-                    os.environ.get('ANTHROPIC_API_KEY') or
-                    os.environ.get('OPENAI_API_KEY') or
-                    os.environ.get('GOOGLE_API_KEY')
+                # Fall back to LiteLLMClient with explicit API key
+                # Required for non-Claude models or when running outside Claude Code
+                api_key = None
+                api_key_env_var = None
+
+                if is_claude_model:
+                    api_key = os.environ.get('ANTHROPIC_API_KEY')
+                    api_key_env_var = 'ANTHROPIC_API_KEY'
+                elif 'gpt' in config.model.lower() or 'openai' in config.model.lower():
+                    api_key = os.environ.get('OPENAI_API_KEY')
+                    api_key_env_var = 'OPENAI_API_KEY'
+                elif 'gemini' in config.model.lower() or 'google' in config.model.lower():
+                    api_key = os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY')
+                    api_key_env_var = 'GOOGLE_API_KEY or GEMINI_API_KEY'
+                else:
+                    # Try common API keys
+                    api_key = (
+                        os.environ.get('ANTHROPIC_API_KEY') or
+                        os.environ.get('OPENAI_API_KEY') or
+                        os.environ.get('GOOGLE_API_KEY')
+                    )
+                    api_key_env_var = 'ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY'
+
+                if not api_key:
+                    if CLAUDE_SDK_AVAILABLE:
+                        # If Claude SDK is available but we got here, it means non-Claude model
+                        logger.error(
+                            f"ACE learning requires {api_key_env_var} for non-Claude model '{config.model}'. "
+                            "Try using a Claude model (e.g., claude-sonnet-4-5-20250929) to use proxy auth."
+                        )
+                    else:
+                        logger.error(
+                            f"ACE learning requires {api_key_env_var} environment variable for model '{config.model}'. "
+                            "Please set the appropriate API key in your environment."
+                        )
+                    self._learning_enabled = False
+                    return
+
+                logger.debug(f"ACE learning using LiteLLMClient with API key from {api_key_env_var}")
+
+                self.llm = LiteLLMClient(
+                    model=config.model,
+                    max_tokens=config.max_tokens,
+                    api_key=api_key  # Explicit pass-through to avoid environment detection issues
                 )
-                api_key_env_var = 'ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY'
-
-            if not api_key:
-                logger.error(
-                    f"ACE learning requires {api_key_env_var} environment variable for model '{config.model}'. "
-                    "Please set the appropriate API key in your environment."
-                )
-                self._learning_enabled = False
-                return
-
-            logger.debug(f"ACE learning using API key from {api_key_env_var} ({len(api_key)} chars)")
-
-            self.llm = LiteLLMClient(
-                model=config.model,
-                max_tokens=config.max_tokens,
-                api_key=api_key  # Explicit pass-through to avoid environment detection issues
-            )
         except Exception as e:
             logger.warning(f"Failed to initialize learning LLM client: {e}")
             self._learning_enabled = False

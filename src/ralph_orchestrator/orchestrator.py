@@ -721,7 +721,7 @@ class RalphOrchestrator:
                 if self.stream_logger:
                     self.stream_logger.info(
                         "orchestrator",
-                        f"Completion promise '{self.config.completion_promise}' matched - task complete",
+                        f"Completion promise '{self.completion_promise}' matched - task complete",
                         iteration=self.metrics.iterations
                     )
                 break
@@ -735,12 +735,17 @@ class RalphOrchestrator:
 
         # Stream log: orchestration complete
         if self.stream_logger:
+            total_cost = self.cost_tracker.total_cost if self.cost_tracker else 0
+            total_tokens = 0
+            if self.cost_tracker:
+                for usage in self.cost_tracker.usage_history:
+                    total_tokens += usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
             self.stream_logger.info(
                 "orchestrator",
                 f"Orchestration complete: {self.metrics.iterations} iterations, {self.metrics.successful_iterations} successful",
                 iteration=self.metrics.iterations,
-                total_tokens=self.metrics.total_tokens,
-                total_cost=self.metrics.total_cost
+                total_tokens=total_tokens,
+                total_cost=total_cost
             )
 
         # Final summary
@@ -1072,6 +1077,13 @@ class RalphOrchestrator:
             self.console.print_info("Cost breakdown:")
             for tool, cost in self.cost_tracker.costs_by_tool.items():
                 self.console.print_info(f"  {tool}: ${cost:.4f}")
+
+        # Display context usage timeline if tracking (Phase 2: Context Instrumentation)
+        if self.context_tracker and self.context_tracker.get_measurements():
+            self.console.print_header("Context Usage Timeline")
+            self.console.print_message(self.context_tracker.get_timeline_ascii())
+            timeline_path = self.context_tracker.save_timeline()
+            self.console.print_success(f"Context timeline saved to {timeline_path}")
 
         # Display ACE learning stats if enabled and gracefully shutdown
         if self.learning_adapter:

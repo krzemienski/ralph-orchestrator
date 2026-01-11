@@ -636,14 +636,23 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     # Early validation: Check API key for ACE learning
+    # NOTE: Claude models can use ClaudeSDKClient (proxy auth) when running inside Claude Code
     if args.learning:
         import os
         model = args.learning_model.lower()
         api_key_found = False
         missing_key_hint = ""
+        is_claude_model = 'claude' in model or 'anthropic' in model
 
-        if 'claude' in model or 'anthropic' in model:
-            api_key_found = bool(os.environ.get('ANTHROPIC_API_KEY'))
+        # Check if Claude SDK is available (enables proxy auth for Claude models)
+        try:
+            from .learning.ace_adapter import CLAUDE_SDK_AVAILABLE
+        except ImportError:
+            CLAUDE_SDK_AVAILABLE = False
+
+        if is_claude_model:
+            # For Claude models, we can use ClaudeSDKClient if available (no API key needed)
+            api_key_found = CLAUDE_SDK_AVAILABLE or bool(os.environ.get('ANTHROPIC_API_KEY'))
             missing_key_hint = "ANTHROPIC_API_KEY"
         elif 'gpt' in model or 'openai' in model:
             api_key_found = bool(os.environ.get('OPENAI_API_KEY'))

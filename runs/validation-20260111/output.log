@@ -1,0 +1,101 @@
+/Users/nick/Library/Python/3.12/lib/python/site-packages/langchain/agents/__init__.py:39: LangChainDeprecationWarning: As of langchain-core 0.3.0, LangChain uses pydantic v2 internally. The langchain_core.pydantic_v1 module was a compatibility shim for pydantic v1, and should no longer be used. Please update the code to import from Pydantic directly.
+
+For example, replace imports like: `from langchain_core.pydantic_v1 import BaseModel`
+with: `from pydantic import BaseModel`
+or the v1 compatibility namespace if you are working in a code base that has not been fully upgraded to pydantic 2 yet. 	from pydantic.v1 import BaseModel
+
+  from langchain.agents.agent import (
+/Users/nick/Library/Python/3.12/lib/python/site-packages/pydantic/v1/validators.py:767: UserWarning: Mixing V1 and V2 models is not supported. `LLMChain` is a V2 model.
+  warn(f'Mixing V1 and V2 models is not supported. `{type_.__name__}` is a V2 model.', UserWarning)
+ℹ Using config: ralph.yml
+╭─────────────────────────────╮                                                 
+│ Starting Ralph Orchestrator │                                                 
+╰─────────────────────────────╯                                                 
+ℹ Agent: claude
+ℹ Prompt: runs/validation-20260111/tier0-validation.md
+ℹ Max iterations: 5
+ℹ Press Ctrl+C to stop gracefully
+
+---
+
+INFO     [ralph-orchestrator.context] Extracted stable prefix: 38 chars
+INFO     [ralph-orchestrator] Stream logging initialized (level: INFO, fifo: True)
+INFO     [ralph-orchestrator] Claude adapter initialized
+2026-01-11 00:27:15,790 - ralph.adapter.kiro - WARNING - Kiro command 'kiro-cli' (and fallback) not found
+WARNING  [ralph.adapter.kiro] Kiro command 'kiro-cli' (and fallback) not found
+2026-01-11 00:27:15,791 - ralph.adapter.kiro - INFO - Kiro adapter initialized - Command: kiro-cli, Default timeout: 600s, Trust tools: True
+INFO     [ralph.adapter.kiro] Kiro adapter initialized - Command: kiro-cli, Default timeout: 600s, Trust tools: True
+WARNING  [ralph-orchestrator] Kiro CLI not available
+WARNING  [ralph-orchestrator] Gemini adapter error: [Errno 13] Permission denied: 'gemini'
+2026-01-11 00:27:15,801 - ralph.adapter.qchat - INFO - Q Chat adapter initialized - Command: q, Default timeout: 600s, Trust tools: True
+INFO     [ralph.adapter.qchat] Q Chat adapter initialized - Command: q, Default timeout: 600s, Trust tools: True
+WARNING  [ralph-orchestrator] Q Chat CLI not available
+WARNING  [ralph-orchestrator] ACP agent not available
+INFO     [ralph-orchestrator] Ralph Orchestrator initialized with claude
+INFO     [ralph-orchestrator] Starting Ralph orchestration loop
+[34m[00:27:15] [INFO   ] orchestrator: Starting Ralph orchestration loop[0m
+[34m[00:27:15] [INFO   ] orchestrator: Using agent: claude[0m
+
+=== RALPH ITERATION 1 ===
+
+INFO     [ralph-orchestrator] Starting iteration 1
+[34m[00:27:15] [INFO   ] orchestrator: Starting iteration 1 (iter=1)[0m
+WARNING  [ralph-orchestrator] Error in iteration: StreamLogger.info() got multiple values for argument 'component'
+✗ Error in iteration: StreamLogger.info() got multiple values for argument 
+'component'
+[1;31m[00:27:15] [ERROR  ] orchestrator: Error in iteration: StreamLogger.info() got [0m
+[1;31mmultiple values for argument 'component' (iter=1)[0m
+WARNING  [ralph-orchestrator] Handling error: StreamLogger.info() got multiple values for argument 'component'
+INFO     [ralph-orchestrator] Archived prompt to prompts/archive/prompt_20260111_002715.md
+
+=== RALPH ITERATION 2 ===
+
+INFO     [ralph-orchestrator] Starting iteration 2
+[34m[00:27:17] [INFO   ] orchestrator: Starting iteration 2 (iter=2)[0m
+WARNING  [ralph-orchestrator] Error in iteration: StreamLogger.info() got multiple values for argument 'component'
+✗ Error in iteration: StreamLogger.info() got multiple values for argument 
+'component'
+[1;31m[00:27:17] [ERROR  ] orchestrator: Error in iteration: StreamLogger.info() got [0m
+[1;31mmultiple values for argument 'component' (iter=2)[0m
+WARNING  [ralph-orchestrator] Handling error: StreamLogger.info() got multiple values for argument 'component'
+INFO     [ralph-orchestrator] Archived prompt to prompts/archive/prompt_20260111_002717.md
+
+=== RALPH ITERATION 3 ===
+
+INFO     [ralph-orchestrator] Starting iteration 3
+[34m[00:27:19] [INFO   ] orchestrator: Starting iteration 3 (iter=3)[0m
+WARNING  [ralph-orchestrator] Error in iteration: StreamLogger.info() got multiple values for argument 'component'
+✗ Error in iteration: StreamLogger.info() got multiple values for argument 
+'component'
+[1;31m[00:27:19] [ERROR  ] orchestrator: Error in iteration: StreamLogger.info() got [0m
+[1;31mmultiple values for argument 'component' (iter=3)[0m
+WARNING  [ralph-orchestrator] Handling error: StreamLogger.info() got multiple values for argument 'component'
+INFO     [ralph-orchestrator] Archived prompt to prompts/archive/prompt_20260111_002719.md
+
+=== RALPH ITERATION 4 ===
+
+INFO     [ralph-orchestrator] Starting iteration 4
+[34m[00:27:21] [INFO   ] orchestrator: Starting iteration 4 (iter=4)[0m
+WARNING  [ralph-orchestrator] Error in iteration: StreamLogger.info() got multiple values for argument 'component'
+✗ Error in iteration: StreamLogger.info() got multiple values for argument 
+'component'
+[1;31m[00:27:21] [ERROR  ] orchestrator: Error in iteration: StreamLogger.info() got [0m
+[1;31mmultiple values for argument 'component' (iter=4)[0m
+WARNING  [ralph-orchestrator] Handling error: StreamLogger.info() got multiple values for argument 'component'
+INFO     [ralph-orchestrator] Archived prompt to prompts/archive/prompt_20260111_002721.md
+
+=== RALPH ITERATION 5 ===
+
+INFO     [ralph-orchestrator] Starting iteration 5
+[34m[00:27:23] [INFO   ] orchestrator: Starting iteration 5 (iter=5)[0m
+WARNING  [ralph-orchestrator] Error in iteration: StreamLogger.info() got multiple values for argument 'component'
+✗ Error in iteration: StreamLogger.info() got multiple values for argument 
+'component'
+[1;31m[00:27:23] [ERROR  ] orchestrator: Error in iteration: StreamLogger.info() got [0m
+[1;31mmultiple values for argument 'component' (iter=5)[0m
+WARNING  [ralph-orchestrator] Handling error: StreamLogger.info() got multiple values for argument 'component'
+INFO     [ralph-orchestrator] Archived prompt to prompts/archive/prompt_20260111_002723.md
+INFO     [ralph-orchestrator] Safety limit reached: Reached maximum iterations (5)
+[33m[00:27:25] [WARNING] orchestrator: Safety limit reached: Reached maximum [0m
+[33miterations (5) (iter=5)[0m
+✗ Error: 'Metrics' object has no attribute 'total_tokens'

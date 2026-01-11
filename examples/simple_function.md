@@ -3,6 +3,21 @@ Working Directory: /Users/nick/Desktop/ralph-orchestrator
 Task File: examples/simple_function.md
 <!-- END RUNTIME CONTEXT -->
 
+<!-- RUNTIME CONTEXT -->
+Working Directory: /Users/nick/Desktop/ralph-orchestrator
+Task File: examples/simple_function.md
+<!-- END RUNTIME CONTEXT -->
+
+<!-- RUNTIME CONTEXT -->
+Working Directory: /Users/nick/Desktop/ralph-orchestrator
+Task File: examples/simple_function.md
+<!-- END RUNTIME CONTEXT -->
+
+<!-- RUNTIME CONTEXT -->
+Working Directory: /Users/nick/Desktop/ralph-orchestrator
+Task File: examples/simple_function.md
+<!-- END RUNTIME CONTEXT -->
+
 # Simple Function Example
 
 Write a Python function that:

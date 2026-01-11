@@ -201,11 +201,10 @@ class ContextTracker:
             emoji = self._get_usage_emoji(measurement.percentage_used)
             self.stream_logger.info(
                 "Context",
-                f"{emoji} {point.value}: {tokens:,} tokens ({measurement.percentage_used:.1f}% of {self.context_limit:,})",
+                f"{emoji} {point.value}: {tokens:,} tokens ({measurement.percentage_used:.1f}% of {self.context_limit:,}) [{component}]",
                 iteration=self._current_iteration,
                 context_tokens=tokens,
-                percentage=measurement.percentage_used,
-                component=component
+                percentage=measurement.percentage_used
             )
 
         return measurement

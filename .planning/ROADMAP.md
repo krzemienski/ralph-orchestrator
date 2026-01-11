@@ -1017,11 +1017,11 @@ cat .agent/metrics/metrics_*.json | jq '.iterations, .cost, .completion_detected
 
 | Phase | Status | Started | Completed | Validated |
 |-------|--------|---------|-----------|-----------|
-| 07 - Core Transformer Module | ⬜ Not Started | - | - | - |
-| 08 - CLI Command Integration | ⬜ Not Started | - | - | - |
-| 09 - Auto-Transform Integration | ⬜ Not Started | - | - | - |
-| 10 - MEDIUM Priority Enrichers | ⬜ Not Started | - | - | - |
-| 11 - Validation & Benchmarking | ⬜ Not Started | - | - | - |
+| 07 - Core Transformer Module | ✅ Complete | 2026-01-11 | 2026-01-11 | ✅ Tested |
+| 08 - CLI Command Integration | ✅ Complete | 2026-01-11 | 2026-01-11 | ✅ Tested |
+| 09 - Auto-Transform Integration | ✅ Complete | 2026-01-11 | 2026-01-11 | ✅ Tested |
+| 10 - MEDIUM Priority Enrichers | ✅ Complete | 2026-01-11 | 2026-01-11 | ✅ 45 tests |
+| 11 - Validation & Benchmarking | 🔄 In Progress | 2026-01-11 | - | Partial |
 
 ---
 
@@ -1055,3 +1055,12 @@ Three bugs were discovered and fixed during validation:
 
 3. **Config Attribute Reference** (orchestrator.py:724)
    - Fixed `self.config.completion_promise` → `self.completion_promise`
+
+4. **ACE Learning API Key Issue** (ace_adapter.py, main.py, __main__.py) - 2026-01-11
+   - **Problem:** ACE learning used `LiteLLMClient` which requires `ANTHROPIC_API_KEY`
+   - Claude Code uses proxy authentication and doesn't expose API keys
+   - This bug was first documented Jan 10 (observation #12700) but never fixed
+   - **Solution:** Created `ClaudeSDKClient` adapter that implements ACE's `LLMClient` interface
+   - Uses `claude_agent_sdk.query()` which inherits Claude Code proxy auth
+   - Updated initialization to prefer `ClaudeSDKClient` for Claude models when `CLAUDE_SDK_AVAILABLE`
+   - Updated CLI validation to skip API key warning when Claude SDK can be used
