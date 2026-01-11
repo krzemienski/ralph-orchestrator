@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Any
 from pathlib import Path
 import asyncio
+import os
 
 
 @dataclass
@@ -92,12 +93,14 @@ class ToolAdapter(ABC):
         # Default implementation - subclasses can override
         return 0.0
     
-    def _enhance_prompt_with_instructions(self, prompt: str) -> str:
+    def _enhance_prompt_with_instructions(self, prompt: str, cwd: str = None, iteration: int = 1) -> str:
         """Enhance prompt with orchestration context and instructions.
-        
+
         Args:
             prompt: The original prompt
-            
+            cwd: Current working directory (optional, auto-detected if not provided)
+            iteration: Current iteration number (1-based)
+
         Returns:
             Enhanced prompt with orchestration instructions
         """
@@ -107,17 +110,49 @@ class ToolAdapter(ABC):
             "IMPORTANT INSTRUCTIONS:",
             "Implement only ONE small, focused task"
         ]
-        
+
         # If any marker exists, assume instructions are already present
         for marker in instruction_markers:
             if marker in prompt:
                 return prompt
-        
-        # Add orchestration context and instructions
-        orchestration_instructions = """
+
+        # Get working directory
+        working_dir = cwd or os.getcwd()
+
+        # Use condensed instructions for later iterations (Phase 4: Dynamic Templates)
+        if iteration > 3:
+            orchestration_instructions = f"""
 ORCHESTRATION CONTEXT:
-You are running within the Ralph Orchestrator loop. This system will call you repeatedly 
-for multiple iterations until the overall task is complete. Each iteration is a separate 
+Working Directory: {working_dir}
+Iteration: {iteration}
+
+Continue from .agent/scratchpad.md. This is iteration {iteration} of the orchestration loop.
+
+KEY REMINDERS:
+- One focused task per iteration
+- Update .agent/scratchpad.md at end with progress
+- Commit changes for checkpointing
+- Clean up temporary files
+
+## Task Completion Signals
+When the ENTIRE task is complete and verified:
+- Write `- [x] TASK_COMPLETE` to the prompt file, OR
+- Include "LOOP_COMPLETE" in your response
+The orchestrator ONLY recognizes these exact formats.
+
+---
+ORIGINAL PROMPT:
+
+"""
+        else:
+            # Full instructions for iterations 1-3
+            orchestration_instructions = f"""
+ORCHESTRATION CONTEXT:
+Working Directory: {working_dir}
+Iteration: {iteration}
+
+You are running within the Ralph Orchestrator loop. This system will call you repeatedly
+for multiple iterations until the overall task is complete. Each iteration is a separate
 execution where you should make incremental progress.
 
 The final output must be well-tested, documented, and production ready.
@@ -131,7 +166,7 @@ IMPORTANT INSTRUCTIONS:
 2. Use the .agent/workspace/ directory for any temporary files or workspaces if not already instructed in the prompt.
 3. Follow this workflow for implementing features:
    - Explore: Research and understand the codebase
-   - Plan: Design your implementation approach  
+   - Plan: Design your implementation approach
    - Implement: Use Test-Driven Development (TDD) - write tests first, then code
    - Commit: Commit your changes with clear messages
 4. When you complete a subtask, document it in the prompt file so the next iteration knows what's done.
@@ -152,11 +187,20 @@ Do NOT restart from scratch if the scratchpad shows previous progress. Continue 
 
 Create the .agent/ directory if it doesn't exist.
 
+## Task Completion Signals
+When the ENTIRE task (not just a subtask) is complete and verified:
+1. Write this EXACT line to the prompt file: `- [x] TASK_COMPLETE`
+   OR
+2. Include "LOOP_COMPLETE" in your response
+
+The orchestrator ONLY recognizes these specific signals to stop the loop.
+Do NOT use other formats like "**Status: COMPLETE**" - they will not be detected.
+
 ---
 ORIGINAL PROMPT:
 
 """
-        
+
         return orchestration_instructions + prompt
     
     def __str__(self) -> str:

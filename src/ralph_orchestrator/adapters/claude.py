@@ -166,9 +166,17 @@ class ClaudeAdapter(ToolAdapter):
             
             # Set system prompt with orchestration context
             system_prompt = kwargs.get('system_prompt', self._system_prompt)
+
+            # Get iteration for dynamic template selection (Phase 4)
+            iteration = kwargs.get('iteration', 1)
+
+            # Get CWD for path context (Phase 3)
+            import os
+            cwd = kwargs.get('cwd', os.getcwd())
+
             if not system_prompt:
                 # Create a default system prompt with orchestration context
-                enhanced_prompt = self._enhance_prompt_with_instructions(prompt)
+                enhanced_prompt = self._enhance_prompt_with_instructions(prompt, cwd=cwd, iteration=iteration)
                 system_prompt = (
                     f"You are helping complete a task. "
                     f"The task is described in the file '{prompt_file}'. "
@@ -178,7 +186,7 @@ class ClaudeAdapter(ToolAdapter):
                 prompt = enhanced_prompt
             else:
                 # If custom system prompt provided, still enhance the main prompt
-                prompt = self._enhance_prompt_with_instructions(prompt)
+                prompt = self._enhance_prompt_with_instructions(prompt, cwd=cwd, iteration=iteration)
             options_dict['system_prompt'] = system_prompt
             
             # Set tool restrictions if provided

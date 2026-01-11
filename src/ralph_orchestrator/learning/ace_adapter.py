@@ -163,6 +163,7 @@ class LearningConfig:
     deduplication_enabled: bool = True
     similarity_threshold: float = 0.85
     worker_timeout: float = 30.0  # Max seconds to wait for worker on shutdown
+    top_k_skills: int = 0  # 0 = inject all skills, >0 = inject top K by score (Phase 5)
 
 
 class ACELearningAdapter:
@@ -718,6 +719,7 @@ class ACELearningAdapter:
         """Add skillbook strategies to prompt.
 
         Thread-safe: Uses lock to prevent race conditions.
+        Phase 5: Supports TOP-K skill injection by score (helpful - harmful).
 
         Args:
             prompt: Original prompt text
@@ -737,8 +739,34 @@ class ACELearningAdapter:
                     logger.debug("No skills in skillbook, returning original prompt")
                     return prompt
 
-                # Use ACE's wrap_skillbook_context for consistent formatting
-                skillbook_context = wrap_skillbook_context(self.skillbook)
+                # Phase 5: TOP-K skill injection by score
+                top_k = self.config.top_k_skills if hasattr(self.config, 'top_k_skills') else 0
+                total_skills = len(skills)
+
+                if top_k > 0 and len(skills) > top_k:
+                    # Sort by effectiveness score (helpful - harmful), highest first
+                    skills_with_scores = [
+                        (s, getattr(s, 'helpful', 0) - getattr(s, 'harmful', 0))
+                        for s in skills
+                    ]
+                    skills_with_scores.sort(key=lambda x: x[1], reverse=True)
+                    skills = [s for s, _ in skills_with_scores[:top_k]]
+                    logger.debug(f"TOP-K filter: {top_k}/{total_skills} skills by score")
+
+                    # Format TOP-K skills manually since we can't use wrap_skillbook_context with filtered skills
+                    skill_lines = []
+                    for skill in skills:
+                        content = getattr(skill, 'content', str(skill))
+                        section = getattr(skill, 'section', 'general')
+                        helpful = getattr(skill, 'helpful', 0)
+                        harmful = getattr(skill, 'harmful', 0)
+                        skill_lines.append(f"- [{section}] {content} (score: {helpful - harmful})")
+
+                    skillbook_context = "## Learned Strategies (TOP-K)\n" + "\n".join(skill_lines)
+                else:
+                    # Use ACE's wrap_skillbook_context for consistent formatting (all skills)
+                    skillbook_context = wrap_skillbook_context(self.skillbook)
+
                 enhanced = f"{prompt}\n\n{skillbook_context}"
 
                 # Record telemetry
@@ -750,6 +778,8 @@ class ACELearningAdapter:
                     success=True,
                     details={
                         'skills_injected': len(skills),
+                        'total_skills': total_skills,
+                        'top_k_enabled': top_k > 0,
                         'original_prompt_len': len(prompt),
                         'enhanced_prompt_len': len(enhanced),
                         'context_added_chars': len(skillbook_context),
@@ -757,7 +787,8 @@ class ACELearningAdapter:
                 )
 
                 logger.info(
-                    f"Skillbook injected | skills={len(skills)} | "
+                    f"Skillbook injected | skills={len(skills)}/{total_skills} | "
+                    f"top_k={top_k if top_k > 0 else 'all'} | "
                     f"added_chars={len(skillbook_context)} | duration={inject_duration:.1f}ms"
                 )
                 return enhanced

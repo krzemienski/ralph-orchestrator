@@ -25,6 +25,7 @@ from .safety import SafetyGuard
 from .context import ContextManager
 from .output import RalphConsole
 from .logging import StreamLogger, LogLevel
+from .monitoring import ContextTracker, MeasurePoint
 
 # Setup logging
 logging.basicConfig(
@@ -129,6 +130,12 @@ class RalphOrchestrator:
 
         # Initialize stream logger (Component 2: Full Log Streaming)
         self.stream_logger = self._initialize_stream_logger()
+
+        # Initialize context tracker for per-component token measurement (Phase 2)
+        self.context_tracker = ContextTracker(
+            adapter_type=self.primary_tool,
+            stream_logger=self.stream_logger
+        )
 
         # Initialize ACE learning adapter (optional feature)
         self.learning_adapter = self._initialize_learning_adapter()
@@ -754,6 +761,16 @@ class RalphOrchestrator:
         # Get the current prompt
         prompt = self.context_manager.get_prompt()
 
+        # Measure initial prompt (Phase 2: ContextTracker)
+        iteration_num = self.metrics.iterations + 1
+        if self.context_tracker:
+            self.context_tracker.measure(
+                MeasurePoint.ITERATION_START,
+                prompt,
+                "initial_prompt",
+                iteration=iteration_num
+            )
+
         # Inject ACE skillbook context if learning is enabled
         if self.learning_adapter:
             original_len = len(prompt)
@@ -761,6 +778,14 @@ class RalphOrchestrator:
             if len(prompt) > original_len:
                 skills_injected = len(prompt) - original_len
                 logger.debug(f"Injected {skills_injected} chars of skillbook context")
+                # Measure after skillbook injection
+                if self.context_tracker:
+                    self.context_tracker.measure(
+                        MeasurePoint.AFTER_SKILLBOOK_INJECT,
+                        prompt,
+                        "skillbook_context",
+                        iteration=iteration_num
+                    )
 
         # Extract tasks from prompt if task queue is empty
         if not self.task_queue and not self.current_task:
@@ -770,10 +795,12 @@ class RalphOrchestrator:
         self._update_current_task('in_progress')
         
         # Try primary adapter with prompt file path
+        # Pass iteration for dynamic template selection (Phase 4)
         response = await self.current_adapter.aexecute(
-            prompt, 
+            prompt,
             prompt_file=str(self.prompt_file),
-            verbose=self.verbose
+            verbose=self.verbose,
+            iteration=self.metrics.iterations + 1  # 1-based iteration number
         )
         
         if not response.success and len(self.adapters) > 1 and not self.stop_requested:
@@ -786,7 +813,8 @@ class RalphOrchestrator:
                     response = await adapter.aexecute(
                         prompt,
                         prompt_file=str(self.prompt_file),
-                        verbose=self.verbose
+                        verbose=self.verbose,
+                        iteration=self.metrics.iterations + 1  # 1-based iteration number
                     )
                     if response.success:
                         break
@@ -799,6 +827,15 @@ class RalphOrchestrator:
             logger.debug(f"Agent response preview: {output_preview}")
             if len(response.output) > 500:
                 logger.debug(f"... (total {len(response.output)} characters)")
+
+            # Measure after response (Phase 2: ContextTracker)
+            if self.context_tracker:
+                self.context_tracker.measure(
+                    MeasurePoint.AFTER_RESPONSE,
+                    prompt + response.output,
+                    "agent_response",
+                    iteration=iteration_num
+                )
         
         # Track costs if enabled
         if self.cost_tracker and response.success:
