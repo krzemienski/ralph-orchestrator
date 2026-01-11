@@ -132,3 +132,23 @@ The orchestrator will continue iterations until all components are implemented a
 - [x] Total tests: 72 passing (9 base + 11 config + 13 backup + 15 document + 24 photo)
 
 **Next iteration:** Implement downloads organizer or main CLI interface
+
+### Iteration 6 - COMPLETE
+**Task:** Implement downloads organizer module
+
+**Completed:**
+- [x] Implemented `organizers/downloads_organizer.py` with:
+  - `DownloadsOrganizer` class extending `BaseOrganizer`
+  - `DEFAULT_FILE_TYPE_MAPPING` dictionary for 60+ file extensions
+  - `DEFAULT_ARCHIVE_DAYS = 30` constant
+  - Supports: documents, archives, installers, images, videos, audio, code categories
+  - `is_old_file()` - Check if file is older than archive_days
+  - `get_file_type_folder()` - Get folder for file extension (case-insensitive)
+  - Old files go to archive/type folder, recent files to type folder
+  - Skips hidden files (starting with .)
+  - Custom archive_days and file_type_mapping support
+- [x] Wrote TDD tests (24 passing tests)
+- [x] Updated `organizers/__init__.py` with exports
+- [x] Total tests: 96 passing (9 base + 11 config + 13 backup + 15 document + 24 photo + 24 downloads)
+
+**Next iteration:** Implement main CLI interface (file_organizer.py)
