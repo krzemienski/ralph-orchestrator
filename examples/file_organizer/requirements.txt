@@ -1,0 +1,12 @@
+# File Organizer CLI Dependencies
+# Install with: pip install -r requirements.txt
+
+# Configuration file support (YAML)
+PyYAML>=6.0
+
+# Image EXIF data extraction for photo organization
+Pillow>=10.0.0
+
+# Development dependencies (optional)
+# pytest>=7.0  # For running tests
+# pytest-mock>=3.0  # For mocking in tests

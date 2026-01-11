@@ -1,3 +1,8 @@
+<!-- RUNTIME CONTEXT -->
+Working Directory: /Users/nick/Desktop/ralph-orchestrator
+Task File: examples/cli_tool.md
+<!-- END RUNTIME CONTEXT -->
+
 # CLI Tool Example
 
 Create a Python CLI tool for file organization:
@@ -173,3 +178,44 @@ The orchestrator will continue iterations until all components are implemented a
 - [x] Total tests: 116 passing (9 base + 11 config + 13 backup + 15 document + 24 photo + 24 downloads + 20 CLI)
 
 **Next iteration:** Create requirements.txt with dependencies
+
+### Iteration 8 - COMPLETE
+**Task:** Create requirements.txt with dependencies
+
+**Completed:**
+- [x] Created `requirements.txt` with:
+  - `PyYAML>=6.0` - For YAML configuration file support
+  - `Pillow>=10.0.0` - For EXIF data extraction from photos
+  - Comments for optional dev dependencies (pytest, pytest-mock)
+- [x] All 116 tests still passing
+
+**Remaining Optional Features:**
+- Custom organization rules (`--custom <pattern>`) - Could be added if needed
+- Undo CLI command - Action recording exists but needs CLI exposure
+- Progress bar - Could add tqdm dependency for large operations
+
+**Core Requirements Complete:**
+- [x] Command-line interface using argparse
+- [x] `organize photos` - Organize photos by date taken (EXIF)
+- [x] `organize documents` - Sort documents by type
+- [x] `organize downloads` - Clean up downloads folder
+- [x] Dry-run mode to preview changes
+- [x] Configuration file support (~/.file_organizer.yml)
+- [x] Logging to file
+- [x] Photos: Year/Month folders based on EXIF data
+- [x] Documents: Folders by extension (pdf/, docx/, txt/)
+- [x] Downloads: Archive old files, group by type
+- [x] Never delete files
+- [x] Create backups before moving
+- [x] Handle duplicate filenames
+- [x] Preserve file permissions
+- [x] Supporting modules: organizers/*, utils/*
+- [x] requirements.txt with dependencies
+
+## Completion Status
+- [x] TASK_COMPLETE
+
+When all requirements are satisfied, mark the checkbox above as complete:
+`- [x] TASK_COMPLETE`
+
+Or output `LOOP_COMPLETE` to signal the orchestrator to stop.
