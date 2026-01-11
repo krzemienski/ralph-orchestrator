@@ -148,7 +148,16 @@ class PromptTransformer:
             if "Working Directory:" in transformed and "Working Directory:" not in original:
                 changes.append("Added path resolution header")
             # Check for checkbox conversion (numbered list to checkboxes)
-            if "- [ ]" in transformed and "- [ ]" not in original:
+            # Must exclude the completion marker's checkbox ("- [ ] TASK_COMPLETE")
+            # by counting non-completion checkboxes
+            original_checkboxes = original.count("- [ ]")
+            transformed_checkboxes = transformed.count("- [ ]")
+            completion_added = "TASK_COMPLETE" in transformed and "TASK_COMPLETE" not in original
+            # If completion was added, it contributes 1 checkbox, so subtract it
+            actual_new_checkboxes = transformed_checkboxes - original_checkboxes
+            if completion_added:
+                actual_new_checkboxes -= 1
+            if actual_new_checkboxes > 0:
                 changes.append("Converted numbered lists to checkboxes")
             # Check for success criteria addition
             if "## Success Criteria" in transformed and "## Success Criteria" not in original:

@@ -381,3 +381,56 @@ class TestAnalysisOutput:
 
         assert "valid" in result.validation
         assert isinstance(result.validation["valid"], bool)
+
+
+class TestChangeTrackingAccuracy:
+    """Tests for accurate change tracking (no false positives)."""
+
+    def test_no_false_positive_checkbox_change_from_completion_marker(self):
+        """Bug fix: Completion marker should NOT trigger checkbox change detection."""
+        from ralph_orchestrator.transform import PromptTransformer, TransformConfig
+
+        # Only enable completion marker, NOT checkbox conversion
+        config = TransformConfig(
+            add_completion_marker=True,
+            add_path_resolution=False,
+            convert_to_checkboxes=False,  # Explicitly disabled
+            add_success_criteria=False
+        )
+        transformer = PromptTransformer(config=config)
+
+        original = """# Task
+Fix a bug.
+
+## Steps
+1. Find it
+2. Fix it
+"""
+        result = transformer.transform(original)
+
+        # The completion marker adds "- [ ] TASK_COMPLETE" but that's NOT
+        # a numbered list conversion, so "checkbox" shouldn't be in changes
+        checkbox_changes = [c for c in result.changes if "checkbox" in c.lower()]
+        assert len(checkbox_changes) == 0, f"False positive: {result.changes}"
+
+    def test_true_positive_checkbox_change_when_enabled(self):
+        """When convert_to_checkboxes is enabled, change should be tracked."""
+        from ralph_orchestrator.transform import PromptTransformer, TransformConfig
+
+        config = TransformConfig(
+            add_completion_marker=False,  # Disable to isolate test
+            add_path_resolution=False,
+            convert_to_checkboxes=True,   # Enabled
+            add_success_criteria=False
+        )
+        transformer = PromptTransformer(config=config)
+
+        original = """# Task
+1. Step one
+2. Step two
+"""
+        result = transformer.transform(original)
+
+        # Should detect the conversion
+        checkbox_changes = [c for c in result.changes if "checkbox" in c.lower()]
+        assert len(checkbox_changes) == 1, f"Should detect conversion: {result.changes}"
