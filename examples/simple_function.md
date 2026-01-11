@@ -1,3 +1,8 @@
+<!-- RUNTIME CONTEXT -->
+Working Directory: /Users/nick/Desktop/ralph-orchestrator
+Task File: examples/simple_function.md
+<!-- END RUNTIME CONTEXT -->
+
 # Simple Function Example
 
 Write a Python function that:
@@ -44,3 +49,11 @@ test_statistics_helper.py::TestEdgeCases::test_two_elements PASSED
 test_statistics_helper.py::TestEdgeCases::test_negative_numbers PASSED
 ============================== 12 passed ==============================
 ```
+
+## Completion Status
+- [x] TASK_COMPLETE
+
+When all requirements are satisfied, mark the checkbox above as complete:
+`- [x] TASK_COMPLETE`
+
+Or output `LOOP_COMPLETE` to signal the orchestrator to stop.
