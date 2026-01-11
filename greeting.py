@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Simple greeting script for RALF orchestrator."""
+"""Greeting script for Phase 6 Validation."""
 
 
 def main() -> None:
-    """Print the RALF greeting message."""
-    print("Hello from RALF!")
+    """Print the Phase 6 Validation greeting message."""
+    print("Hello from Phase 6 Validation!")
 
 
 if __name__ == "__main__":
