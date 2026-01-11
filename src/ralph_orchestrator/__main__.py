@@ -1039,6 +1039,19 @@ Examples:
             help="Path to skillbook JSON file (default: .agent/skillbook/skillbook.json)"
         )
 
+        # Auto-transform options
+        p.add_argument(
+            "--auto-transform",
+            action="store_true",
+            help="Transform prompt into RALF-optimized format before execution (adds completion markers, path resolution)"
+        )
+
+        p.add_argument(
+            "--minimal",
+            action="store_true",
+            help="With --auto-transform, only add critical elements (completion marker only)"
+        )
+
         # Collect remaining arguments for agent
         p.add_argument(
             "agent_args",
@@ -1302,12 +1315,65 @@ Examples:
 ---""")
             sys.exit(1)
 
+    # Auto-transform prompt if requested
+    if getattr(args, 'auto_transform', False):
+        from ralph_orchestrator.transform import PromptTransformer, TransformConfig, TransformContext
+
+        # Create config based on --minimal flag
+        minimal = getattr(args, 'minimal', False)
+        transform_config = TransformConfig(
+            add_completion_marker=True,  # Always add (critical for RALF)
+            add_path_resolution=not minimal,  # Skip in minimal mode
+            add_scratchpad_header=not minimal,  # Skip in minimal mode
+        )
+
+        # Create context with working directory
+        transform_context = TransformContext(
+            working_directory=str(Path.cwd()),
+            task_file=config.prompt_file if not config.prompt_text else None,
+        )
+
+        # Get content to transform
+        if config.prompt_text:
+            original_content = config.prompt_text
+        else:
+            prompt_path = Path(config.prompt_file)
+            original_content = prompt_path.read_text()
+
+        # Transform the prompt
+        try:
+            transformer = PromptTransformer(config=transform_config)
+            result = transformer.transform(original_content, context=transform_context)
+
+            # Apply transformation
+            if config.prompt_text:
+                # Update config with transformed text directly
+                config.prompt_text = result.transformed
+            else:
+                # Write transformed content back to file
+                prompt_path.write_text(result.transformed)
+
+            # Show verbose output if requested
+            if getattr(args, 'verbose', False):
+                _console.print_info("Auto-transform applied:")
+                for change in result.changes:
+                    _console.print_info(f"  - {change}")
+                if not result.changes:
+                    _console.print_info("  (no changes needed - already in RALF format)")
+
+        except Exception as e:
+            _console.print_warning(f"Auto-transform failed: {e}")
+            _console.print_info("Continuing with original prompt...")
+
     if config.dry_run:
         _console.print_info("Dry run mode - no tools will be executed")
         _console.print_info("Configuration:")
         if config.prompt_text:
             preview = config.prompt_text[:100] + "..." if len(config.prompt_text) > 100 else config.prompt_text
             _console.print_info(f"  Prompt text: {preview}")
+            # Show completion marker status for auto-transformed prompts
+            if "TASK_COMPLETE" in config.prompt_text:
+                _console.print_info(f"  Completion marker: TASK_COMPLETE ✓")
         else:
             _console.print_info(f"  Prompt file: {config.prompt_file}")
         _console.print_info(f"  Agent: {config.agent.value}")
