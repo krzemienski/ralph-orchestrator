@@ -73,10 +73,10 @@ See [AGENTS.md](AGENTS.md) for the full philosophy.
 
 ```bash
 # Install globally
-npm install -g @ralph-orchestrator/ralph
+npm install -g @ralph-orchestrator/ralph-cli
 
 # Or run directly with npx
-npx @ralph-orchestrator/ralph --version
+npx @ralph-orchestrator/ralph-cli --version
 ```
 
 ### Via Cargo
