@@ -1,6 +1,6 @@
 # Production Deployment Guide
 
-Complete guide for deploying Ralph Orchestrator in production environments with enterprise-grade reliability, security, and scalability.
+This guide covers deployment patterns and operational checklists for running Ralph Orchestrator in production environments. Ralph is alpha-quality and evolving, so treat this as a solid starting point and validate/tune it for your infrastructure, risk profile, and compliance needs.
 
 ## Pre-Production Checklist
 
@@ -838,4 +838,4 @@ def check_memory():
 
 - [Monitoring Guide](../advanced/monitoring.md) - Set up comprehensive monitoring
 - [Security Best Practices](../advanced/security.md) - Security hardening
-- [Troubleshooting Guide](../troubleshooting.md) - Common issues and solutions
+- [Troubleshooting Guide](../reference/troubleshooting.md) - Common issues and solutions

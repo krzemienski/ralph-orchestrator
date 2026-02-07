@@ -38,7 +38,7 @@ python ralph_orchestrator.py --agent claude
 
 ### Q Chat
 
-Q Chat is a cost-effective AI assistant suitable for many general tasks, now with production-ready adapter implementation.
+Q Chat is a cost-effective AI assistant suitable for many general tasks, with a solid adapter implementation.
 
 **Strengths:**
 - Good general-purpose capabilities
@@ -71,7 +71,7 @@ python ralph_orchestrator.py --agent q
 python ralph_orchestrator.py -a q
 ```
 
-**Production Features:**
+**Operational Features:**
 - **Message Queue**: Thread-safe async message processing
 - **Error Recovery**: Automatic retry with exponential backoff
 - **Signal Handling**: Graceful shutdown on SIGINT/SIGTERM
@@ -412,9 +412,9 @@ python ralph_orchestrator.py \
 - **Simplicity**: Straightforward for basic tasks
 - **Concurrency**: Thread-safe operations for parallel processing
 - **Reliability**: Automatic error recovery and retry mechanisms
-- **Production-Ready**: Signal handling, graceful shutdown, resource cleanup
+- **Operational Reliability**: Signal handling, graceful shutdown, resource cleanup
 
-**Production Capabilities:**
+**Operational Capabilities:**
 ```bash
 # Quick iterations with Q
 python ralph_orchestrator.py \
@@ -665,6 +665,73 @@ python ralph_orchestrator.py \
   --verbose
 ```
 
+## Event Format (v2.0+)
+
+Ralph v2.0 uses JSONL (JSON Lines) for event communication between agents and the orchestrator.
+
+Events are **routing signals**, not data transport. Keep payloads brief.
+
+### Writing Events
+
+Agents write events to the run's events file (`.ralph/events-YYYYMMDD-HHMMSS.jsonl`):
+
+```json
+{"topic":"build.done","payload":"tests: pass, lint: pass, typecheck: pass, audit: pass, coverage: pass","ts":"2026-01-14T19:30:00Z"}
+{"topic":"build.blocked","payload":"Missing dependency","ts":"2026-01-14T19:31:15Z"}
+```
+
+**Structured payloads** (preferred for complex data):
+
+```json
+{"topic":"review.done","payload":{"status":"approved","issues":0},"ts":"2026-01-14T19:30:00Z"}
+```
+
+**Event structure:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `topic` | string | Yes | Event topic (e.g., "build.done") |
+| `payload` | string or object | No | Brief event data (string or JSON object) |
+| `ts` | string | Yes | ISO 8601 timestamp |
+
+### JSONL Format Rules
+
+⚠️ **Critical**: JSONL requires each event to be a **single line**:
+
+- ✅ **DO**: Keep payloads brief and on one line
+- ✅ **DO**: Use JSON objects for structured data: `{"payload": {"status": "ok"}}`
+- ❌ **DON'T**: Use YAML formatting in payloads (causes literal newlines)
+- ❌ **DON'T**: Put multi-line content directly in payloads
+
+For detailed output, write to `.agent/scratchpad.md` and emit a brief event.
+
+### Example: Builder Hat
+
+```bash
+# Preferred: Use ralph emit for safe JSON formatting
+ralph emit build.done "tests: pass, lint: pass, typecheck: pass, audit: pass, coverage: pass"
+
+# Structured object payload
+ralph emit review.done --json '{"status":"approved","files":3}'
+```
+
+### Reading Events
+
+Ralph reads new events from the run's events file after each agent execution. Events trigger hat transitions based on configured triggers.
+
+Each run creates a unique timestamped events file (e.g., `.ralph/events-20260120-193202.jsonl`) to prevent stale events from polluting new runs. The `ralph emit` command automatically writes to the correct file.
+
+### Legacy XML Format (v1.x)
+
+**Deprecated**: v1.x used XML events in agent output:
+```xml
+<event topic="build.done">
+tests: pass, lint: pass, typecheck: pass, audit: pass, coverage: pass
+</event>
+```
+
+This format is no longer supported in v2.0. See [Migration Guide](../migration/v2-hatless-ralph.md).
+
 ## Best Practices
 
 ### 1. Match Agent to Task
@@ -709,5 +776,5 @@ Balance quality with budget:
 
 - Master [Prompt Engineering](prompts.md) for better results
 - Learn about [Cost Management](cost-management.md)
-- Understand [Checkpointing](checkpointing.md) strategies
 - Explore [Configuration](configuration.md) options
+- Read the [v2.0 Migration Guide](../migration/v2-hatless-ralph.md)

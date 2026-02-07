@@ -122,7 +122,7 @@ The orchestrator will run until completion criteria are met or limits reached.
 
 ### 2. Documentation Pattern
 
-```markdown
+````markdown
 # Create User Documentation
 
 ## Objective
@@ -161,7 +161,7 @@ docs/
 - [ ] No broken links
 
 The orchestrator will continue iterations until limits are reached.
-```
+````
 
 ### 3. Data Analysis Pattern
 
@@ -521,6 +521,5 @@ Include input/output examples and edge cases
 ## Next Steps
 
 - Explore [Cost Management](cost-management.md) for efficient prompts
-- Learn about [Checkpointing](checkpointing.md) for long tasks
 - Review [Agent Selection](agents.md) for optimal results
 - See [Examples](../examples/index.md) for real-world prompts

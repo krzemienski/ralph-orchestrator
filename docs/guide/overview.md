@@ -2,7 +2,7 @@
 
 ## What is Ralph Orchestrator?
 
-Ralph Orchestrator is a production-ready implementation of the Ralph Wiggum orchestration technique for AI agents. It provides a robust framework for running AI agents in a continuous loop until a task is completed, with enterprise-grade safety, monitoring, and cost controls.
+Ralph Orchestrator is a functional, early-stage (alpha) implementation of the Ralph Wiggum orchestration technique for AI agents. It provides a robust framework for running AI agents in a continuous loop until a task is completed, with practical safety, monitoring, and cost controls. It works today, but expect occasional rough edges and breaking API/config changes between releases.
 
 The system is named after Ralph Wiggum from The Simpsons, embodying the philosophy of persistent iteration: "Me fail English? That's unpossible!" - just keep trying until you succeed.
 
@@ -309,4 +309,3 @@ See the [Quick Start](../quick-start.md) guide for detailed instructions.
 - Understand [Agent](agents.md) selection and capabilities
 - Master [Prompt](prompts.md) engineering for best results
 - Explore [Cost Management](cost-management.md) strategies
-- Set up [Checkpointing](checkpointing.md) for recovery
