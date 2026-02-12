@@ -4,20 +4,16 @@ import Citadel
 /// Represents a single step in the remote setup process.
 enum SetupStep: Int, CaseIterable, Sendable {
     case checkDependencies = 1
-    case installRust = 2
-    case cloneRepository = 3
-    case buildBinaries = 4
-    case installCloudflared = 5
-    case checkCloudflaredAuth = 6
-    case startServer = 7
-    case startTunnel = 8
+    case downloadBinaries = 2
+    case installCloudflared = 3
+    case checkCloudflaredAuth = 4
+    case startServer = 5
+    case startTunnel = 6
 
     var title: String {
         switch self {
-        case .checkDependencies: return "Checking build dependencies"
-        case .installRust: return "Installing Rust toolchain"
-        case .cloneRepository: return "Cloning ralph-orchestrator"
-        case .buildBinaries: return "Building binaries"
+        case .checkDependencies: return "Checking dependencies"
+        case .downloadBinaries: return "Downloading prebuilt binaries"
         case .installCloudflared: return "Installing cloudflared"
         case .checkCloudflaredAuth: return "Checking cloudflared auth"
         case .startServer: return "Starting ralph-mobile-server"
@@ -27,10 +23,8 @@ enum SetupStep: Int, CaseIterable, Sendable {
 
     var timeoutSeconds: Int {
         switch self {
-        case .checkDependencies: return 300
-        case .installRust: return 300
-        case .cloneRepository: return 120
-        case .buildBinaries: return 1800  // 30 minutes for cargo build --release
+        case .checkDependencies: return 60
+        case .downloadBinaries: return 120
         case .installCloudflared: return 120
         case .checkCloudflaredAuth: return 30
         case .startServer: return 60
@@ -372,99 +366,54 @@ actor SSHSetupService {
         }
     }
 
+    /// The GitHub release URL for prebuilt binaries.
+    private static let releaseTag = "v0.1.0-mobile"
+    private static let releaseBaseURL = "https://github.com/krzemienski/ralph-orchestrator/releases/download"
+
     /// Build the platform-aware SSH command for a given setup step.
     ///
-    /// Each command is a self-contained bash snippet that handles
-    /// macOS (brew) or Linux (apt/dnf/pacman) as appropriate.
+    /// Each command is a self-contained bash snippet that detects
+    /// OS and architecture to download the correct prebuilt binary.
     private func buildCommand(for step: SetupStep, serverPort: Int, platform: RemotePlatform) -> String {
+        let tag = Self.releaseTag
+        let base = Self.releaseBaseURL
+
         switch step {
         case .checkDependencies:
-            switch platform {
-            case .macOS:
-                return """
-                echo "==> [1/8] Checking build dependencies (macOS)..." && \
-                if ! command -v brew >/dev/null 2>&1; then \
-                    echo "ERROR: Homebrew not found. Install from https://brew.sh" && exit 1; \
-                fi && \
-                echo "Homebrew found: $(brew --version | head -1)" && \
-                brew install openssl pkg-config git curl 2>/dev/null || true && \
-                if ! xcode-select -p >/dev/null 2>&1; then \
-                    echo "WARN: Xcode Command Line Tools not found. Install with: xcode-select --install"; \
-                else \
-                    echo "Xcode CLT: $(xcode-select -p)"; \
-                fi && \
-                echo "Dependencies OK"
-                """
-            case .linux:
-                return """
-                echo "==> [1/8] Checking build dependencies (Linux)..." && \
-                MISSING="" && \
-                command -v gcc >/dev/null 2>&1 || MISSING="$MISSING build-essential" && \
-                command -v pkg-config >/dev/null 2>&1 || MISSING="$MISSING pkg-config" && \
-                dpkg -s libssl-dev >/dev/null 2>&1 || command -v openssl >/dev/null 2>&1 || MISSING="$MISSING libssl-dev" && \
-                command -v git >/dev/null 2>&1 || MISSING="$MISSING git" && \
-                command -v curl >/dev/null 2>&1 || MISSING="$MISSING curl" && \
-                if [ -z "$MISSING" ]; then \
-                    echo "All build dependencies found"; \
-                else \
-                    echo "Missing packages:$MISSING — installing..." && \
-                    if command -v apt-get >/dev/null 2>&1; then \
-                        sudo apt-get update -qq && sudo apt-get install -y -qq $MISSING; \
-                    elif command -v dnf >/dev/null 2>&1; then \
-                        sudo dnf install -y $MISSING; \
-                    elif command -v pacman >/dev/null 2>&1; then \
-                        sudo pacman -Sy --noconfirm $MISSING; \
-                    else \
-                        echo "WARN: Unknown package manager — install$MISSING manually"; \
-                    fi; \
-                fi && \
-                echo "Dependencies OK"
-                """
-            }
-
-        case .installRust:
-            // rustup works identically on macOS and Linux
             return """
-            if ! command -v cargo >/dev/null 2>&1; then \
-                echo "==> [2/8] Installing Rust toolchain..." && \
-                curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-                . "$HOME/.cargo/env" && \
-                echo "Installed: $(rustc --version)"; \
-            else \
-                echo "==> [2/8] Rust already installed: $(rustc --version)"; \
-            fi
+            echo "==> [1/6] Checking dependencies..." && \
+            command -v curl >/dev/null 2>&1 || { echo "ERROR: curl not found"; exit 1; } && \
+            echo "curl: $(curl --version | head -1)" && \
+            echo "Dependencies OK"
             """
 
-        case .cloneRepository:
+        case .downloadBinaries:
             return """
-            RALPH_DIR="$HOME/ralph-orchestrator" && \
-            if [ -d "$RALPH_DIR" ]; then \
-                echo "==> [3/8] Updating ralph-orchestrator..." && \
-                cd "$RALPH_DIR" && git fetch --all && git pull --ff-only 2>/dev/null || true; \
-            else \
-                echo "==> [3/8] Cloning ralph-orchestrator..." && \
-                git clone https://github.com/mikeyobrien/ralph-orchestrator.git "$RALPH_DIR" && \
-                cd "$RALPH_DIR"; \
-            fi && \
-            MOBILE_BRANCH="feat/ios-api-coverage" && \
-            if git rev-parse --verify "$MOBILE_BRANCH" >/dev/null 2>&1 || \
-               git rev-parse --verify "origin/$MOBILE_BRANCH" >/dev/null 2>&1; then \
-                echo "Checking out $MOBILE_BRANCH (has ralph-mobile-server)..." && \
-                git checkout "$MOBILE_BRANCH" 2>/dev/null || git checkout -t "origin/$MOBILE_BRANCH" 2>/dev/null || true; \
-            fi && \
-            echo "Repository ready at $RALPH_DIR (branch: $(git rev-parse --abbrev-ref HEAD))"
-            """
-
-        case .buildBinaries:
-            return """
-            . "$HOME/.cargo/env" 2>/dev/null; \
-            cd "$HOME/ralph-orchestrator" && \
-            echo "==> [4/8] Building ralph-mobile-server and ralph CLI (release mode)..." && \
-            echo "This may take 10-20 minutes on first build..." && \
-            cargo build --release --bin ralph-mobile-server --bin ralph 2>&1 && \
-            echo "" && \
-            echo "Build complete!" && \
-            ls -lh target/release/ralph-mobile-server target/release/ralph
+            RALPH_DIR="$HOME/ralph-mobile-server" && \
+            mkdir -p "$RALPH_DIR" && cd "$RALPH_DIR" && \
+            echo "==> [2/6] Downloading prebuilt binaries..." && \
+            OS=$(uname -s | tr '[:upper:]' '[:lower:]') && \
+            ARCH=$(uname -m) && \
+            case "$OS" in \
+                darwin) OS_TAG="darwin" ;; \
+                linux)  OS_TAG="linux" ;; \
+                *) echo "ERROR: Unsupported OS: $OS" && exit 1 ;; \
+            esac && \
+            case "$ARCH" in \
+                x86_64|amd64)   ARCH_TAG="x86_64" ;; \
+                aarch64|arm64)  ARCH_TAG="arm64" ;; \
+                *) echo "ERROR: Unsupported arch: $ARCH" && exit 1 ;; \
+            esac && \
+            SUFFIX="${OS_TAG}-${ARCH_TAG}" && \
+            echo "Platform: ${OS_TAG}/${ARCH_TAG}" && \
+            echo "Downloading ralph-mobile-server..." && \
+            curl -fSL "\(base)/\(tag)/ralph-mobile-server-${SUFFIX}" -o ralph-mobile-server && \
+            chmod +x ralph-mobile-server && \
+            echo "Downloading ralph CLI..." && \
+            curl -fSL "\(base)/\(tag)/ralph-${SUFFIX}" -o ralph && \
+            chmod +x ralph && \
+            echo "Download complete!" && \
+            ls -lh ralph-mobile-server ralph
             """
 
         case .installCloudflared:
@@ -472,17 +421,17 @@ actor SSHSetupService {
             case .macOS:
                 return """
                 if ! command -v cloudflared >/dev/null 2>&1; then \
-                    echo "==> [5/8] Installing cloudflared via Homebrew..." && \
+                    echo "==> [3/6] Installing cloudflared via Homebrew..." && \
                     brew install cloudflare/cloudflare/cloudflared && \
                     echo "Installed: $(cloudflared --version)"; \
                 else \
-                    echo "==> [5/8] cloudflared already installed: $(cloudflared --version)"; \
+                    echo "==> [3/6] cloudflared already installed: $(cloudflared --version)"; \
                 fi
                 """
             case .linux:
                 return """
                 if ! command -v cloudflared >/dev/null 2>&1; then \
-                    echo "==> [5/8] Installing cloudflared..." && \
+                    echo "==> [3/6] Installing cloudflared..." && \
                     ARCH=$(uname -m) && \
                     case "$ARCH" in \
                         x86_64|amd64)  CF_ARCH="amd64" ;; \
@@ -495,7 +444,7 @@ actor SSHSetupService {
                     sudo chmod +x /usr/local/bin/cloudflared && \
                     echo "Installed: $(cloudflared --version)"; \
                 else \
-                    echo "==> [5/8] cloudflared already installed: $(cloudflared --version)"; \
+                    echo "==> [3/6] cloudflared already installed: $(cloudflared --version)"; \
                 fi
                 """
             }
@@ -511,17 +460,17 @@ actor SSHSetupService {
                 echo "Follow the browser link to authenticate." && \
                 echo "Then tap 'Retry' in the app."; \
             else \
-                echo "==> [6/8] cloudflared authenticated (cert.pem found)"; \
+                echo "==> [4/6] cloudflared authenticated (cert.pem found)"; \
             fi
             """
 
         case .startServer:
             return """
-            cd "$HOME/ralph-orchestrator" && \
-            echo "==> [7/8] Starting ralph-mobile-server on port \(serverPort)..." && \
+            cd "$HOME/ralph-mobile-server" && \
+            echo "==> [5/6] Starting ralph-mobile-server on port \(serverPort)..." && \
             pkill -f 'ralph-mobile-server' 2>/dev/null || true && \
             sleep 1 && \
-            setsid nohup ./target/release/ralph-mobile-server --port \(serverPort) --bind-all > ralph-mobile-server.log 2>&1 & \
+            setsid nohup ./ralph-mobile-server --port \(serverPort) --bind-all > ralph-mobile-server.log 2>&1 & \
             SERVER_PID=$! && \
             echo "Server PID: $SERVER_PID" && \
             echo "Waiting for server to be ready..." && \
@@ -538,10 +487,9 @@ actor SSHSetupService {
 
         case .startTunnel:
             return """
-            . "$HOME/.cargo/env" 2>/dev/null; \
-            cd "$HOME/ralph-orchestrator" && \
-            echo "==> [8/8] Starting Cloudflare Named Tunnel..." && \
-            ./target/release/ralph tunnel start --name ralph-mobile --port \(serverPort) 2>&1
+            cd "$HOME/ralph-mobile-server" && \
+            echo "==> [6/6] Starting Cloudflare Named Tunnel..." && \
+            ./ralph tunnel start --name ralph-mobile --port \(serverPort) 2>&1
             """
         }
     }
