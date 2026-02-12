@@ -1,0 +1,12 @@
+{"t":0,"agent":"a81b7c7","agent_type":"general-purpose","event":"agent_start","parent_mode":"ultrawork"}
+{"t":0,"agent":"a9d002b","agent_type":"general-purpose","event":"agent_start","parent_mode":"ultrawork"}
+{"t":0,"agent":"a9d002b","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":73724}
+{"t":0,"agent":"a81b7c7","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":504894}
+{"t":0,"agent":"a2ff765","agent_type":"unknown","event":"agent_stop","success":true}
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"oh-my-claudecode:ultrapilot"}
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"start:debug"}
+{"t":0,"agent":"a99b781","agent_type":"Explore","event":"agent_start","parent_mode":"ultrawork"}
+{"t":0,"agent":"a64b05e","agent_type":"Explore","event":"agent_start","parent_mode":"ultrawork"}
+{"t":0,"agent":"a64b05e","agent_type":"Explore","event":"agent_stop","success":true,"duration_ms":29359}
+{"t":0,"agent":"a99b781","agent_type":"Explore","event":"agent_stop","success":true,"duration_ms":199372}
+{"t":0,"agent":"ab13628","agent_type":"unknown","event":"agent_stop","success":true}

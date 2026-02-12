@@ -117,3 +117,17 @@ PROMPT.md
 
 # Codex local state
 .codex/
+
+# Archived/old mobile apps
+archive/
+apps/
+ralph-mobile/
+
+# Swift/build cache
+packages/RalphShared/.build/
+packages/RalphShared/.swiftpm/
+target/
+ios/validation-screenshots/
+*.mp4
+*.mov
+

@@ -1,0 +1,8 @@
+{
+  "active": true,
+  "started_at": "2026-02-11T01:12:37.138Z",
+  "original_prompt": "/start:specify  So what we need to make for this one is basically I would like to see a cloudflare tunnel, like basically the ability for somebody to start up a cloudflare tunnel based on what they say, you know, run the ralph command for building the backend server and writing it without port. And so basically allow for that people that vocation to be able to access in a remote manner and explain to them how they can either supply their own if they have cloudflare and like get their own DNS or something like that. She's a custom domain or it will just be LRO assigned. And then basically ensure that we have the ability to actually add a backend host, like first opening the app, meaning like if there is no connection, you will be prompted to give you one to give one with an IP address. And if not, then there should be a screen there that maybe has a shell script that would go ahead and install and then run the backend server. We install ralph and run backend on someone's machine. If they gave you like SSH credentials and stuff like that, that would set the machine up and actually do that. Then it would start connecting. And then also then I want to full on audit of every single feature and make sure that there's a hundred percent parity. I want you to pull down the latest ralph orchestrator code, right? I also want to say, I want you to think of at least five or six different improvements for the code base and the user experience perspective. I explained to me why you need to triple check and redo a validation across everything.",
+  "session_id": "9a8663da-dd58-41b5-b581-dc71e6420a22",
+  "reinforcement_count": 0,
+  "last_checked_at": "2026-02-11T01:12:37.138Z"
+}

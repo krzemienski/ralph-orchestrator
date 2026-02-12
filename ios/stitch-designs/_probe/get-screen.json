@@ -1,0 +1,12 @@
+{
+  "probe_status": "PASSED",
+  "timestamp": "2026-02-05T19:42:00Z",
+  "project_id": "14788895704127880189",
+  "screen_id": "aa22ea8c7e594e438dd78a6bb51bcc75",
+  "screenshot_url": "https://lh3.googleusercontent.com/aida/AOfcidVaeQw_...(accessible)",
+  "html_url": "https://contribution.usercontent.google.com/download?c=...(accessible)",
+  "screenshot_format": "PNG (valid IHDR/IDAT/IEND chunks)",
+  "html_content": "Tailwind CSS config + Settings UI component with Server URL input and Save button",
+  "pipeline_verified": true,
+  "environment": "unrestricted network - Google CDN URLs accessible"
+}
