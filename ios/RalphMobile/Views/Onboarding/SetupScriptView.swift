@@ -346,6 +346,8 @@ struct SetupScriptView: View {
     private var generatedScript: String {
         let port = sshPort.isEmpty ? "22" : sshPort
         let srvPort = serverPort.isEmpty ? "8080" : serverPort
+        let releaseTag = "v0.1.0-mobile"
+        let releaseBase = "https://github.com/krzemienski/ralph-orchestrator/releases/download"
         return """
         #!/bin/bash
         set -euo pipefail
@@ -361,60 +363,51 @@ struct SetupScriptView: View {
         echo ""
 
         OS=$(uname -s)
+        ARCH=$(uname -m)
+        RALPH_DIR="$HOME/ralph-mobile-server"
 
-        # ── Step 1: Install build dependencies ──
-        echo "==> [1/8] Checking build dependencies..."
-        if [ "$OS" = "Darwin" ]; then
-            if ! command -v brew >/dev/null 2>&1; then
-                echo "ERROR: Homebrew not found. Install from https://brew.sh"
-                exit 1
-            fi
-            brew install openssl pkg-config git curl 2>/dev/null || true
-        else
-            if command -v apt-get >/dev/null 2>&1; then
-                sudo apt-get update -qq
-                sudo apt-get install -y -qq build-essential pkg-config libssl-dev git curl
-            elif command -v dnf >/dev/null 2>&1; then
-                sudo dnf install -y gcc make openssl-devel pkg-config git curl
-            elif command -v pacman >/dev/null 2>&1; then
-                sudo pacman -Sy --noconfirm base-devel openssl git curl
-            else
-                echo "WARN: Unknown package manager. Ensure gcc, git, curl, and OpenSSL dev headers are installed."
-            fi
-        fi
+        # ── Step 1: Check dependencies ──
+        echo "==> [1/6] Checking dependencies..."
+        command -v curl >/dev/null 2>&1 || { echo "ERROR: curl not found. Install curl first."; exit 1; }
+        echo "    curl: $(curl --version | head -1)"
 
-        # ── Step 2: Install Rust if not present ──
-        if ! command -v cargo >/dev/null 2>&1; then
-            echo "==> [2/8] Installing Rust toolchain..."
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-            source "$HOME/.cargo/env"
-        else
-            echo "==> [2/8] Rust already installed: $(rustc --version)"
-        fi
+        # ── Step 2: Download prebuilt binaries ──
+        echo "==> [2/6] Downloading prebuilt binaries..."
+        mkdir -p "$RALPH_DIR" && cd "$RALPH_DIR"
 
-        # ── Step 3: Clone or update ralph-orchestrator ──
-        RALPH_DIR="$HOME/ralph-orchestrator"
-        if [ -d "$RALPH_DIR" ]; then
-            echo "==> [3/8] Updating ralph-orchestrator..."
-            cd "$RALPH_DIR" && git pull --ff-only
-        else
-            echo "==> [3/8] Cloning ralph-orchestrator..."
-            git clone https://github.com/mikeyobrien/ralph-orchestrator.git "$RALPH_DIR"
-            cd "$RALPH_DIR"
-        fi
+        # Detect OS
+        case "$OS" in
+            Darwin) OS_TAG="darwin" ;;
+            Linux)  OS_TAG="linux" ;;
+            *) echo "ERROR: Unsupported OS: $OS"; exit 1 ;;
+        esac
 
-        # ── Step 4: Build both binaries ──
-        . "$HOME/.cargo/env" 2>/dev/null
-        echo "==> [4/8] Building ralph-mobile-server and ralph CLI..."
-        cargo build --release --bin ralph-mobile-server --bin ralph
+        # Detect architecture
+        case "$ARCH" in
+            x86_64|amd64)   ARCH_TAG="x86_64" ;;
+            aarch64|arm64)  ARCH_TAG="arm64" ;;
+            *) echo "ERROR: Unsupported architecture: $ARCH"; exit 1 ;;
+        esac
 
-        # ── Step 5: Install cloudflared ──
+        SUFFIX="${OS_TAG}-${ARCH_TAG}"
+
+        echo "    Platform: ${OS_TAG}-${ARCH_TAG}"
+        echo "    Downloading ralph-mobile-server..."
+        curl -fSL "\(releaseBase)/\(releaseTag)/ralph-mobile-server-${SUFFIX}" -o ralph-mobile-server
+        chmod +x ralph-mobile-server
+
+        echo "    Downloading ralph CLI..."
+        curl -fSL "\(releaseBase)/\(releaseTag)/ralph-${SUFFIX}" -o ralph
+        chmod +x ralph
+
+        ls -lh ralph-mobile-server ralph
+
+        # ── Step 3: Install cloudflared ──
         if ! command -v cloudflared >/dev/null 2>&1; then
-            echo "==> [5/8] Installing cloudflared..."
+            echo "==> [3/6] Installing cloudflared..."
             if [ "$OS" = "Darwin" ]; then
                 brew install cloudflare/cloudflare/cloudflared
             else
-                ARCH=$(uname -m)
                 case "$ARCH" in
                     x86_64|amd64)  CF_ARCH="amd64" ;;
                     aarch64|arm64) CF_ARCH="arm64" ;;
@@ -427,10 +420,10 @@ struct SetupScriptView: View {
             fi
             echo "    Installed: $(cloudflared --version)"
         else
-            echo "==> [5/8] cloudflared already installed: $(cloudflared --version)"
+            echo "==> [3/6] cloudflared already installed: $(cloudflared --version)"
         fi
 
-        # ── Step 6: Check cloudflared authentication ──
+        # ── Step 4: Check cloudflared authentication ──
         if [ ! -f "$HOME/.cloudflared/cert.pem" ]; then
             echo ""
             echo "=========================================="
@@ -446,13 +439,14 @@ struct SetupScriptView: View {
             echo "=========================================="
             exit 0
         fi
-        echo "==> [6/8] cloudflared authenticated (cert.pem found)"
+        echo "==> [4/6] cloudflared authenticated (cert.pem found)"
 
-        # ── Step 7: Start ralph-mobile-server ──
-        echo "==> [7/8] Starting ralph-mobile-server on port \(srvPort)..."
+        # ── Step 5: Start ralph-mobile-server ──
+        cd "$RALPH_DIR"
+        echo "==> [5/6] Starting ralph-mobile-server on port \(srvPort)..."
         pkill -f 'ralph-mobile-server' 2>/dev/null || true
         sleep 1
-        nohup ./target/release/ralph-mobile-server --port \(srvPort) --bind-all > ralph-mobile-server.log 2>&1 &
+        setsid nohup ./ralph-mobile-server --port \(srvPort) --bind-all > ralph-mobile-server.log 2>&1 &
         SERVER_PID=$!
         echo "    Server PID: $SERVER_PID"
 
@@ -470,9 +464,10 @@ struct SetupScriptView: View {
             exit 1
         fi
 
-        # ── Step 8: Start Cloudflare Named Tunnel ──
-        echo "==> [8/8] Starting Cloudflare Named Tunnel..."
-        ./target/release/ralph tunnel start --name ralph-mobile --port \(srvPort)
+        # ── Step 6: Start Cloudflare Named Tunnel ──
+        echo "==> [6/6] Starting Cloudflare Named Tunnel..."
+        cd "$RALPH_DIR"
+        ./ralph tunnel start --name ralph-mobile --port \(srvPort)
 
         # ── Done ──
         LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ipconfig getifaddr en0 2>/dev/null || echo "unknown")
